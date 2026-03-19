@@ -127,3 +127,27 @@ if __name__ == "__main__":
     nDisagreeLDA = (LVAL != PVAL).sum()
     error_rate = nDisagreeLDA/len(PVAL)
     print(f"LDA-only error rate: {error_rate:.5f}")
+    
+    # PCA + LDA
+    # Estimate PCA on initial DTR
+    P = -trainPCAmodel(DTR, 3)
+    # Apply PCA on DTR and DVAL
+    DTR_pca = np.dot(P.T, DTR)
+    DVAL_pca = np.dot(P.T, DVAL)
+    # Estimate LDA on DTR_pca
+    W = trainLDAmodel(DTR_pca, LTR, 1)
+    # Apply LDA on DTR_pca and DVAL_pca
+    DTR_lda = np.dot(W.T, DTR_pca)
+    DVAL_lda = np.dot(W.T, DVAL_pca)
+    histsPlot(DVAL_lda, LVAL, 1)
+    # Estimate threshold from DTR_lda
+    threshold = (DTR_lda[0, LTR==0].mean() + DTR_lda[0, LTR==1].mean()) / 2.0
+    print(f"{threshold:.5f}")
+    # Classify DVAL_lda with estimated threshold
+    PVAL = np.zeros(shape=LVAL.shape, dtype=np.int32)
+    PVAL[DVALW[0] >= threshold] = 1 # Predict class 1 for elements greater than the threshold
+    PVAL[DVALW[0] < threshold] = 0 # Predict class 0 for elements lower than the threshold
+    # Compute PCA+LDA prediction error rate
+    nDisagreePCA_LDA = (LVAL != PVAL).sum()
+    error_rate = nDisagreePCA_LDA/len(PVAL)
+    print(f"PCA+LDA error rate: {error_rate:.5f}")
