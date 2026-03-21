@@ -1,23 +1,7 @@
 # -*- coding: utf-8 -*-
-import numpy as np
 import matplotlib.pyplot as plt
 
-def loadData(fileName):
-    dataMatrix = []
-    labels = []
-    
-    with open(fileName) as f:
-        for line in f:
-            features = np.array([float(i) for i in line.split(",")[0:-1]])
-            columnFeatures = features.reshape(features.size, 1)
-            dataMatrix.append(columnFeatures)
-            
-            label = int(line.split(",")[-1])
-            labels.append(label)
-            
-    return (np.hstack(dataMatrix), np.array(labels))
-
-def histsPlot(D, L):
+def histsPlot(D, L, title, nDimensions = 6):
     hFea = {
         0: "Feature 1",
         1: "Feature 2",
@@ -30,10 +14,11 @@ def histsPlot(D, L):
     D0 = D[:, L==0] # Fake class
     D1 = D[:, L==1] # Genuine class
     
-    for idxFea in range(6):
+    for idxFea in range(nDimensions):
         plt.figure()
         plt.hist(D0[idxFea, :], bins=10, density=True, alpha=0.4, label='Fake', color="red")
         plt.hist(D1[idxFea, :], bins=10, density=True, alpha=0.4, label='Genuine', color="green")
+        plt.title(title)
         plt.xlabel(hFea[idxFea])
         plt.ylabel('Density')
         plt.legend()
@@ -64,12 +49,3 @@ def scattersPlot(D, L):
             plt.legend()
             plt.tight_layout()
         plt.show()
-
-if __name__ == "__main__":
-    np.set_printoptions(precision=3, suppress=True)
-    
-    D, L = loadData("trainData.txt")
-    
-    histsPlot(D, L)
-    
-    scattersPlot(D, L)
