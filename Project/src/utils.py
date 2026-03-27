@@ -1,6 +1,8 @@
 import numpy as np
 
-# -*- coding: utf-8 -*-
+def vrow(x):
+    return x.reshape((1, x.size))
+
 def loadData(fileName):
     dataMatrix = []
     labels = []
@@ -29,3 +31,9 @@ def split_db_2to1(D, L, seed = 0):
     LVAL = L[idxTest]
     
     return (DTR, LTR), (DVAL, LVAL)
+
+def computeCovariance(D):
+    mu = D.mean(1).reshape((D.shape[0], 1))
+    DC = D - mu
+    C = DC @ DC.T / float(D.shape[1])
+    return C

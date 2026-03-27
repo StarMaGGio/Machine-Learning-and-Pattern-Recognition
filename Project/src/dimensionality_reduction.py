@@ -1,12 +1,7 @@
 import numpy as np
 import scipy
+from src.utils import computeCovariance
 # -*- coding: utf-8 -*-
-
-def computeCovariance(D):
-    mu = D.mean(1).reshape((D.shape[0], 1))
-    DC = D - mu
-    C = DC @ DC.T / float(D.shape[1])
-    return C
 
 def trainPCAmodel(D, m):
     # covariance matrix
