@@ -88,6 +88,7 @@ if __name__ == "__main__":
             
             plt.figure()
             plt.hist(D_c[i], bins=50, density=True)
+            logpdf = logpdf_GAU_ND(vrow(XPlot), mu_class_fea_ML, C_class_fea_ML).sum()
             plt.plot(XPlot.ravel(), np.exp(logpdf_GAU_ND(vrow(XPlot), mu_class_fea_ML, C_class_fea_ML)))
             plt.title(f"Gaussian Distribution of Feature {i+1} - Class {c}")
             plt.show()
