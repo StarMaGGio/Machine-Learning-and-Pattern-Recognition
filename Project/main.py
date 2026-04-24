@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import matplotlib.pyplot as plt
-from src.utils import loadData, split_db_2to1, computeCovariance, vrow
+from src.utils import loadData, split_db_2to1, computeCovariance, vrow, vcol
 from src.visualization import histsPlot
 from src.dimensionality_reduction import trainPCAmodel, trainLDAmodel
 from src.ML_estimate_for_Gaussian import logpdf_GAU_ND
+from src.gaussian_models import compute_llr_for_classification, compute_predictions_with_llr, compute_error_rate
 
 # Function to preprocess the dataset with Principal Component and Linear Discrimination Analysis
 def PCA_LDA_effects_and_classification_analysis(D, L):
@@ -76,20 +77,78 @@ if __name__ == "__main__":
     # Plot histograms for the features of the initial dataset
     #histsPlot(D, L, "", 1)
     
-    # For each class, for each feature, compute ML estimate and plot the distibution density on top of the normalized histogram
-    XPlot = np.linspace(-4, 4, 1000)
-    for c in range(2):
-        D_c = D[:, L==c]
-        mu_class_ML = D_c.mean(1).reshape((D_c.shape[0], 1))
-        for i in range(6):
-            mu_class_fea_ML = mu_class_ML[i]
-            D_class_fea = D_c[i, :].reshape(1, -1)
-            C_class_fea_ML = computeCovariance(D_class_fea)
-            
-            plt.figure()
-            plt.hist(D_c[i], bins=50, density=True)
-            logpdf = logpdf_GAU_ND(vrow(XPlot), mu_class_fea_ML, C_class_fea_ML).sum()
-            plt.plot(XPlot.ravel(), np.exp(logpdf_GAU_ND(vrow(XPlot), mu_class_fea_ML, C_class_fea_ML)))
-            plt.title(f"Gaussian Distribution of Feature {i+1} - Class {c}")
-            plt.show()
+    
+    
+    
+    # ----- LAB 5 -----
+    # Split dataset in train and eval
+    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
+    
+    DTR0 = DTR[:, LTR == 0]
+    DTR1 = DTR[:, LTR == 1]
+    
+    # ---------------------------------------------
+    #  Compare MVG vs Tied Gaussian vs Naive Bayes
+    # ---------------------------------------------
+    
+    # --- MVG ---
+    # Compute ML estimates for model parameters (mu, C)
+    C0, mu0 = computeCovariance(DTR0)
+    C1, mu1 = computeCovariance(DTR1)
+    
+    # Compute LLRs
+    LLRs = compute_llr_for_classification(DVAL, mu0, mu1, C0, C1)
+    
+    # Compute predictions
+    PVAL = compute_predictions_with_llr(LLRs, DVAL.shape[1], 0)
+    
+    # Compute error rate
+    err = compute_error_rate(PVAL, LVAL)
+    print("MVG error rate: ", err)
+    
+    # --- Naive Bayes Gaussian ---
+    # Compute ML estimates for model parameters (mu, Ct)
+    Ct0 = C0 * np.identity(C0.shape[1])
+    Ct1 = C1 * np.identity(C1.shape[1])
+    
+    # Compute LLRs
+    LLRs = compute_llr_for_classification(DVAL, mu0, mu1, Ct0, Ct1)
+    
+    # Compute predictions
+    PVAL = compute_predictions_with_llr(LLRs, DVAL.shape[1], 0)
+    
+    # Compute error rate
+    err = compute_error_rate(PVAL, LVAL)
+    print("Naive Bayes Gaussian error rate: ", err)
+    
+    # --- Tied Gaussian ---
+    # Compute ML estimates for model parameters (mu, Sw)
+    Sw = ((C0*DTR0.shape[1])+(C1*DTR1.shape[1]))/float(DTR.shape[1])
+    
+    # Compute LLRs
+    LLRs = compute_llr_for_classification(DVAL, mu0, mu1, Sw, Sw)
+    
+    # Compute predictions
+    PVAL = compute_predictions_with_llr(LLRs, DVAL.shape[1], 0)
+    
+    # Compute error rate
+    err = compute_error_rate(PVAL, LVAL)
+    print("Tied Gaussian error rate: ", err)
+    
+    # ------------------------------------------------------
+    #  Analize results in light of features characteristics 
+    # ------------------------------------------------------
+    
+    # Print Covariance Matrices
+    print()
+    print("Covariance Matrix (Class 0): ", C0)
+    print("Covariance Matrix (Class 1): ", C1)
+    
+    # Compute Correlation Matrices
+    Corr0 = C0 / ( vcol(C0.diagonal()**0.5) * vrow(C0.diagonal()**0.5 ))
+    Corr1 = C1 / ( vcol(C1.diagonal()**0.5) * vrow(C1.diagonal()**0.5 ))
+    
+    
+    
+    
     

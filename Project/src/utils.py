@@ -3,6 +3,9 @@ import numpy as np
 def vrow(x):
     return x.reshape((1, x.size))
 
+def vcol(x):
+    return x.reshape((x.size, 1))
+
 def loadData(fileName):
     dataMatrix = []
     labels = []
@@ -36,4 +39,4 @@ def computeCovariance(D):
     mu = D.mean(1).reshape((D.shape[0], 1))
     DC = D - mu
     C = DC @ DC.T / float(D.shape[1])
-    return C
+    return C, mu

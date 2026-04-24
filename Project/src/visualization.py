@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 import matplotlib.pyplot as plt
+import numpy as np
+from src.utils import computeCovariance, vrow
+from src.ML_estimate_for_Gaussian import logpdf_GAU_ND
 
 def histsPlot(D, L, title, nDimensions = 6):
     hFea = {
@@ -49,3 +52,22 @@ def scattersPlot(D, L):
             plt.legend()
             plt.tight_layout()
         plt.show()
+        
+# Plot distibution density on top of the normalized histogram for all the features of the dataset
+def plot_distribution_density(D, L):
+    # For each class, for each feature, compute ML estimate and plot the distibution density on top of the normalized histogram
+    XPlot = np.linspace(-4, 4, 1000)
+    for c in range(2):
+        D_c = D[:, L==c]
+        mu_class_ML = D_c.mean(1).reshape((D_c.shape[0], 1))
+        for i in range(6):
+            mu_class_fea_ML = mu_class_ML[i]
+            D_class_fea = D_c[i, :].reshape(1, -1)
+            C_class_fea_ML = computeCovariance(D_class_fea)
+            
+            plt.figure()
+            plt.hist(D_c[i], bins=50, density=True)
+            logpdf = logpdf_GAU_ND(vrow(XPlot), mu_class_fea_ML, C_class_fea_ML).sum()
+            plt.plot(XPlot.ravel(), np.exp(logpdf_GAU_ND(vrow(XPlot), mu_class_fea_ML, C_class_fea_ML)))
+            plt.title(f"Gaussian Distribution of Feature {i+1} - Class {c}")
+            plt.show()
