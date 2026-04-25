@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import matplotlib.pyplot as plt
-from src.utils import loadData, split_db_2to1, computeCovariance, vrow, vcol
-from src.visualization import histsPlot
+from src.utils import loadData, split_db_2to1, computeCovariance, vrow, vcol, computeCorrelationMatrix
+from src.visualization import histsPlot, plot_distribution_density
 from src.dimensionality_reduction import trainPCAmodel, trainLDAmodel
 from src.ML_estimate_for_Gaussian import logpdf_GAU_ND
 from src.gaussian_models import compute_llr_for_classification, compute_predictions_with_llr, compute_error_rate
@@ -69,27 +69,13 @@ def PCA_LDA_effects_and_classification_analysis(D, L):
     nDisagreePCA_LDA = (LVAL != PVAL2).sum()
     error_rate = nDisagreePCA_LDA/len(PVAL2)
     print(f"PCA-LDA error rate: {error_rate:.5f}")
-
-if __name__ == "__main__":
-    np.set_printoptions(precision=3, suppress=True)
     
-    D, L = loadData("data/trainData.txt")
-    # Plot histograms for the features of the initial dataset
-    #histsPlot(D, L, "", 1)
-    
-    
-    
-    
-    # ----- LAB 5 -----
-    # Split dataset in train and eval
-    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
-    
+# ---------------------------------------------
+#  Compare MVG vs Tied Gaussian vs Naive Bayes
+# ---------------------------------------------
+def compare_gaussian_models(DTR, LTR, DVAL, LVAL):
     DTR0 = DTR[:, LTR == 0]
     DTR1 = DTR[:, LTR == 1]
-    
-    # ---------------------------------------------
-    #  Compare MVG vs Tied Gaussian vs Naive Bayes
-    # ---------------------------------------------
     
     # --- MVG ---
     # Compute ML estimates for model parameters (mu, C)
@@ -134,21 +120,60 @@ if __name__ == "__main__":
     # Compute error rate
     err = compute_error_rate(PVAL, LVAL)
     print("Tied Gaussian error rate: ", err)
+
+if __name__ == "__main__":
+    np.set_printoptions(precision=3, suppress=True)
     
-    # ------------------------------------------------------
-    #  Analize results in light of features characteristics 
-    # ------------------------------------------------------
+    D, L = loadData("data/trainData.txt")
+    # Plot histograms for the features of the initial dataset
+    #histsPlot(D, L, "", 1)
     
+    # Split dataset in train and eval
+    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
+    
+    # ----- LAB 5 -----
+    # Try gaussian models with all the features
+    compare_gaussian_models(DTR, LTR, DVAL, LVAL)
+    
+    #  Analize results in light of features characteristics
     # Print Covariance Matrices
     print()
-    print("Covariance Matrix (Class 0): ", C0)
-    print("Covariance Matrix (Class 1): ", C1)
+    #print("Covariance Matrix (Class 0): ", computeCovariance(D[:, L==0])[0])
+    #print("Covariance Matrix (Class 1): ", computeCovariance(D[:, L==1])[0])
     
     # Compute Correlation Matrices
-    Corr0 = C0 / ( vcol(C0.diagonal()**0.5) * vrow(C0.diagonal()**0.5 ))
-    Corr1 = C1 / ( vcol(C1.diagonal()**0.5) * vrow(C1.diagonal()**0.5 ))
+    Corr0 = computeCorrelationMatrix(computeCovariance(D[:, L==0])[0])
+    Corr1 = computeCorrelationMatrix(computeCovariance(D[:, L==1])[0])
+    
+    # Plot distribution densities of all the features
+    #plot_distribution_density(D, L)
+    
+    # Try gaussian models with only features 1 to 4
+    D_f1_4 = D[:4, :]
+    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D_f1_4, L)
+    #compare_gaussian_models(DTR, LTR, DVAL, LVAL)
+    print()
+    
+    # Try again with only features 1-2 (similar mean, different variance)
+    D_f1_2 = D[:2, :]
+    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D_f1_2, L)
+    #compare_gaussian_models(DTR, LTR, DVAL, LVAL)
+    print()
+    
+    # Try again with only features 3-4 (different mean, similar variance)
+    D_f3_4 = D[2:4, :]
+    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D_f3_4, L)
+    #compare_gaussian_models(DTR, LTR, DVAL, LVAL)
+    print()
     
     
-    
-    
-    
+    # Try again by reprocessing with PCA
+    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
+    m = 4
+    # Estimate PCA on initial DTR
+    P = trainPCAmodel(DTR, m)
+    # Apply PCA on DTR and DVAL
+    DTR_pca = np.dot(P.T, DTR)
+    DVAL_pca = np.dot(P.T, DVAL)
+    histsPlot(DTR_pca, LTR, "", 4)
+    compare_gaussian_models(DTR_pca, LTR, DVAL_pca, LVAL)

@@ -40,3 +40,6 @@ def computeCovariance(D):
     DC = D - mu
     C = DC @ DC.T / float(D.shape[1])
     return C, mu
+
+def computeCorrelationMatrix(C):
+    C / ( vcol(C.diagonal()**0.5) * vrow(C.diagonal()**0.5 ))

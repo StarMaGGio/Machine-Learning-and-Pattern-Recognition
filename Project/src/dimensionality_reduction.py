@@ -5,7 +5,7 @@ from src.utils import computeCovariance
 
 def trainPCAmodel(D, m):
     # covariance matrix
-    C = computeCovariance(D)
+    C = computeCovariance(D)[0]
     # eigenvalues and eigenvectors
     s, U = np.linalg.eigh(C)
     # m leading eigenvectors

@@ -63,7 +63,7 @@ def plot_distribution_density(D, L):
         for i in range(6):
             mu_class_fea_ML = mu_class_ML[i]
             D_class_fea = D_c[i, :].reshape(1, -1)
-            C_class_fea_ML = computeCovariance(D_class_fea)
+            C_class_fea_ML = computeCovariance(D_class_fea)[0]
             
             plt.figure()
             plt.hist(D_c[i], bins=50, density=True)
