@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 import matplotlib.pyplot as plt
 import numpy as np
-from src.utils import computeCovariance, vrow
+from src.utils import computeCovariance, vrow, compute_confusion_matrix
 from src.ML_estimate_for_Gaussian import logpdf_GAU_ND
+from src.bayes_decisions_model import compute_normalized_DCF, compute_normalized_minDCF
 
 def histsPlot(D, L, title, nDimensions = 6):
     hFea = {
@@ -71,3 +72,34 @@ def plot_distribution_density(D, L):
             plt.plot(XPlot.ravel(), np.exp(logpdf_GAU_ND(vrow(XPlot), mu_class_fea_ML, C_class_fea_ML)))
             plt.title(f"Gaussian Distribution of Feature {i+1} - Class {c}")
             plt.show()
+            
+def plot_Bayes_error(evalset_llr_binary, evalset_labels_binary, model):
+    effPriorLogOdds = np.linspace(-4, 4, 21)
+    dcf = []
+    mindcf = []
+    predicted_labels_binary = np.zeros(evalset_labels_binary.shape[0], dtype=np.int32)
+    
+    for p in effPriorLogOdds:
+        effPrior = 1/(1+np.exp(-p))
+        
+        t = -p
+        predicted_labels_binary[evalset_llr_binary > t] = 1
+        predicted_labels_binary[evalset_llr_binary <= t] = 0
+        
+        conf_matr = compute_confusion_matrix(predicted_labels_binary, evalset_labels_binary)
+        
+        DCF = compute_normalized_DCF(effPrior, 1, 1, conf_matr)
+        dcf.append(DCF)
+        
+        minDCF = compute_normalized_minDCF(evalset_llr_binary, evalset_labels_binary, effPrior, 1, 1)
+        mindcf.append(minDCF)
+        
+    plt.figure()
+    plt.plot(effPriorLogOdds, dcf, label="DCF", color='r')
+    plt.plot(effPriorLogOdds, mindcf, label='min DCF', color='b')
+    plt.ylim([0, 1.1])
+    plt.xlim([-4, 4])
+    plt.title(f"Bayes error plots for {model}")
+    plt.ylabel("DCF value")
+    plt.xlabel("prior log-odds")
+    plt.show()

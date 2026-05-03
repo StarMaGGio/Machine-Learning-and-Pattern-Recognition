@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import matplotlib.pyplot as plt
-from src.utils import loadData, split_db_2to1, computeCovariance, vrow, vcol, computeCorrelationMatrix
-from src.visualization import histsPlot, plot_distribution_density
+from src.utils import loadData, split_db_2to1, computeCovariance, vrow, vcol, computeCorrelationMatrix, compute_confusion_matrix
+from src.visualization import histsPlot, plot_distribution_density, plot_Bayes_error
 from src.dimensionality_reduction import trainPCAmodel, trainLDAmodel
 from src.ML_estimate_for_Gaussian import logpdf_GAU_ND
-from src.gaussian_models import compute_llr_for_classification, compute_predictions_with_llr, compute_error_rate
+from src.gaussian_models import compute_llr_for_classification, compute_predictions_with_llr, compute_error_rate, compute_llr_MVG, compute_llr_Tied_Gaussian, compute_llr_Naive_Bayes_Gaussian
+from src.bayes_decisions_model import compute_optimal_bayes_decisions, compute_normalized_DCF, compute_normalized_minDCF
 
 # Function to preprocess the dataset with Principal Component and Linear Discrimination Analysis
 def PCA_LDA_effects_and_classification_analysis(D, L):
@@ -120,18 +121,53 @@ def compare_gaussian_models(DTR, LTR, DVAL, LVAL):
     # Compute error rate
     err = compute_error_rate(PVAL, LVAL)
     print("Tied Gaussian error rate: ", err)
-
-if __name__ == "__main__":
-    np.set_printoptions(precision=3, suppress=True)
     
-    D, L = loadData("data/trainData.txt")
-    # Plot histograms for the features of the initial dataset
-    #histsPlot(D, L, "", 1)
+def compare_gaussian_models_with_different_features(DTR, LTR, DVAL, LVAL):
+    # Try gaussian models with all the features
+    compare_gaussian_models(DTR, LTR, DVAL, LVAL)
     
-    # Split dataset in train and eval
+    #  Analize results in light of features characteristics
+    # Print Covariance Matrices
+    print()
+    #print("Covariance Matrix (Class 0): ", computeCovariance(D[:, L==0])[0])
+    #print("Covariance Matrix (Class 1): ", computeCovariance(D[:, L==1])[0])
+    
+    # Compute Correlation Matrices
+    Corr0 = computeCorrelationMatrix(computeCovariance(D[:, L==0])[0])
+    Corr1 = computeCorrelationMatrix(computeCovariance(D[:, L==1])[0])
+    
+    # Plot distribution densities of all the features
+    #plot_distribution_density(D, L)
+    
+    # Try gaussian models with only features 1 to 4
+    D_f1_4 = D[:4, :]
+    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D_f1_4, L)
+    #compare_gaussian_models(DTR, LTR, DVAL, LVAL)
+    print()
+    
+    # Try again with only features 1-2 (similar mean, different variance)
+    D_f1_2 = D[:2, :]
+    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D_f1_2, L)
+    #compare_gaussian_models(DTR, LTR, DVAL, LVAL)
+    print()
+    
+    # Try again with only features 3-4 (different mean, similar variance)
+    D_f3_4 = D[2:4, :]
+    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D_f3_4, L)
+    #compare_gaussian_models(DTR, LTR, DVAL, LVAL)
+    print()
+    
+    
+    # Try again by reprocessing with PCA
     (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
-    
-    # ----- LAB 5 -----
+    m = 4
+    # Estimate PCA on initial DTR
+    P = trainPCAmodel(DTR, m)
+    # Apply PCA on DTR and DVAL
+    DTR_pca = np.dot(P.T, DTR)
+    DVAL_pca = np.dot(P.T, DVAL)
+    histsPlot(DTR_pca, LTR, "", 4)
+    compare_gaussian_models(DTR_pca, LTR, DVAL_pca, LVAL)# ----- LAB 5 -----
     # Try gaussian models with all the features
     compare_gaussian_models(DTR, LTR, DVAL, LVAL)
     
@@ -177,3 +213,54 @@ if __name__ == "__main__":
     DVAL_pca = np.dot(P.T, DVAL)
     histsPlot(DTR_pca, LTR, "", 4)
     compare_gaussian_models(DTR_pca, LTR, DVAL_pca, LVAL)
+
+if __name__ == "__main__":
+    np.set_printoptions(precision=3, suppress=True)
+    
+    D, L = loadData("data/trainData.txt")
+    # Plot histograms for the features of the initial dataset
+    #histsPlot(D, L, "", 1)
+    
+    # Split dataset in train and eval
+    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
+    
+    # --- LAB 6 ---
+    # Define 5 different applications
+    applications = [(0.5, 1.0, 1.0), # uniform prior and costs
+                    (0.9, 1.0, 1.0), # prior probability of Genuine sample is higher
+                    (0.1, 1.0, 1.0), # prior probability of Fake sample is higher
+                    (0.5, 1.0, 9.0), # prior is uniform and cost of accepting fake image is larger
+                    (0.5, 9.0, 1.0)] # prior is uniform and cost of rejecting legit image is larger
+    
+    # Compute effective priors for each application
+    effective_priors = []
+    for pi, Cfn, Cfp in applications:
+        effPrior = (pi*Cfn)/((pi*Cfn)+(1-pi)*Cfp)
+        effective_priors.append(effPrior)
+        print(f"Application (pi={pi}, Cfn={Cfn}, Cfp={Cfp}) -> Effective Prior: {effPrior:.2f}")
+        print()
+    
+    # Compute optimal Bayes decisions for the validation set for MVG models and its variants
+    gaussian_models = ["MVG", "Tied Gaussian", "Naive Bayes Gaussian"]
+    effective_priors = np.unique(effective_priors)
+    for model in gaussian_models:
+        print()
+        print("Model: ", model)
+        
+        evalset_llr_binary = []
+        if model == "MVG": evalset_llr_binary = compute_llr_MVG(DTR, LTR, DVAL)
+        elif model == "Tied Gaussian": evalset_llr_binary = compute_llr_Tied_Gaussian(DTR, LTR, DVAL)
+        elif model == "Naive Bayes Gaussian": evalset_llr_binary = compute_llr_Naive_Bayes_Gaussian(DTR, LTR, DVAL)
+        
+        for effPrior in effective_priors:
+            PVAL = compute_optimal_bayes_decisions(effPrior, evalset_llr_binary, LVAL)
+            DCF = compute_normalized_DCF(effPrior, 1, 1, compute_confusion_matrix(PVAL, LVAL))
+            min_DCF = compute_normalized_minDCF(evalset_llr_binary, LVAL, effPrior, 1, 1)
+            loss = DCF - min_DCF
+            percent_loss = loss / min_DCF * 100
+            print(f"effPrior={effPrior}: norm_DCF={DCF:.3f}, min_DCF={min_DCF:.3f}, percent_loss={percent_loss:.3f}")
+            
+        plot_Bayes_error(evalset_llr_binary, LVAL, model)
+            
+        
+    

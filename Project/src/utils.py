@@ -43,3 +43,12 @@ def computeCovariance(D):
 
 def computeCorrelationMatrix(C):
     C / ( vcol(C.diagonal()**0.5) * vrow(C.diagonal()**0.5 ))
+    
+def compute_confusion_matrix(predictions, true_labels):
+    n = len(np.unique(true_labels))
+    conf_matrix = np.zeros((n, n), np.int32)
+    
+    for p,t in zip(predictions, true_labels):
+        conf_matrix[p][t] += 1
+        
+    return conf_matrix
