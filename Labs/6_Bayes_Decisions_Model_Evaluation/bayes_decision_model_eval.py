@@ -27,6 +27,24 @@ def compute_bayes_risk(pi, Cfn, Cfp, cm):
     
 def compute_normalized_DCF(pi, Cfn, Cfp, DCFu):
     return DCFu/min(pi*Cfn, (1-pi)*Cfp)
+    
+def compute_normalized_minDCF(evalset_llr_binary, pi, Cfn, Cfp):
+    minDCF = 1000
+    # for each "threshold" in the llr list
+    for t in np.unique(evalset_llr_binary):
+        # Compute predicted labels using the score as a threshold
+        predicted_labels_binary[evalset_llr_binary > t] = 1
+        predicted_labels_binary[evalset_llr_binary <= t] = 0
+        
+        # Compute confusion matrix
+        conf = compute_confusion_matrix(predicted_labels_binary, evalset_labels_binary)
+        
+        # Compute normalized DCF
+        currentDCF = compute_normalized_DCF(pi, Cfn, Cfp, compute_bayes_risk(pi, Cfn, Cfp, conf))
+    
+        minDCF = min(minDCF, currentDCF)
+    
+    return minDCF
 
 def plot_ROC_curve(evalset_llr_binary, evalset_labels_binary, pi, Cfn, Cfp):
     x = []
@@ -56,6 +74,37 @@ def plot_ROC_curve(evalset_llr_binary, evalset_labels_binary, pi, Cfn, Cfp):
     plt.xlabel("FPR")
     plt.ylabel("TPR")
     plt.show()
+    
+def plot_Bayes_error(evalset_llr_binary, evalset_labels_binary):
+    effPriorLogOdds = np.linspace(-3, 3, 21)
+    dcf = []
+    mindcf = []
+    
+    for p in effPriorLogOdds:
+        effPrior = 1/(1+np.exp(-p))
+        
+        t = -p
+        predicted_labels_binary[evalset_llr_binary > t] = 1
+        predicted_labels_binary[evalset_llr_binary <= t] = 0
+        
+        conf_matr = compute_confusion_matrix(predicted_labels_binary, evalset_labels_binary)
+        
+        DCF = compute_normalized_DCF(effPrior, 1, 1, compute_bayes_risk(effPrior, 1, 1, conf_matr))
+        dcf.append(DCF)
+        
+        minDCF = compute_normalized_minDCF(evalset_llr_binary, effPrior, 1, 1)
+        mindcf.append(minDCF)
+        
+    plt.figure()
+    plt.plot(effPriorLogOdds, dcf, label="DCF", color='r')
+    plt.plot(effPriorLogOdds, mindcf, label='min DCF', color='b')
+    plt.ylim([0, 1.1])
+    plt.xlim([-3, 3])
+    plt.title("Bayes error plots")
+    plt.ylabel("DCF value")
+    plt.xlabel("prior log-odds")
+    plt.show()
+        
 
 if __name__ == "__main__":
     
@@ -111,28 +160,15 @@ if __name__ == "__main__":
     print()
     
     # Minimum Detection costs
-    minDCF = 1000
-    # for each "threshold" in the llr list
-    for t in np.unique(evalset_llr_binary):
-        # Compute predicted labels using the score as a threshold
-        predicted_labels_binary[evalset_llr_binary > t] = 1
-        predicted_labels_binary[evalset_llr_binary <= t] = 0
-        
-        # Compute confusion matrix
-        conf = compute_confusion_matrix(predicted_labels_binary, evalset_labels_binary)
-        
-        # Compute normalized DCF
-        currentDCF = compute_normalized_DCF(pi, Cfn, Cfp, compute_bayes_risk(pi, Cfn, Cfp, conf))
-    
-        minDCF = min(minDCF, currentDCF)
-        
+    minDCF = compute_normalized_minDCF(evalset_llr_binary, pi, Cfn, Cfp)
     print("Min DCF")
     print(minDCF)
     
     # ROC curves
     plot_ROC_curve(evalset_llr_binary, evalset_labels_binary, pi, Cfn, Cfp)
-        
     
+    # Bayes error plots
+    plot_Bayes_error(evalset_llr_binary, evalset_labels_binary)
     
     
     
