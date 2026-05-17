@@ -1,14 +1,17 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 import matplotlib.pyplot as plt
-from src.utils import loadData, split_db_2to1, computeCovariance, vrow, vcol, computeCorrelationMatrix, compute_confusion_matrix
+from src.utils import loadData, split_db_2to1, computeCovariance, vrow, vcol, computeCorrelationMatrix, compute_confusion_matrix, quadratic_expansion
 from src.visualization import histsPlot, plot_distribution_density, plot_Bayes_error
 from src.dimensionality_reduction import trainPCAmodel, trainLDAmodel
 from src.ML_estimate_for_Gaussian import logpdf_GAU_ND
 from src.gaussian_models import compute_llr_for_classification, compute_predictions_with_llr, compute_error_rate, compute_llr_MVG, compute_llr_Tied_Gaussian, compute_llr_Naive_Bayes_Gaussian
 from src.bayes_decisions_model import compute_optimal_bayes_decisions, compute_normalized_DCF, compute_normalized_minDCF
+from src.logistic_regression import trainLogReg, trainLogRegWeighted
 
-# Function to preprocess the dataset with Principal Component and Linear Discrimination Analysis
+# --------------------------------------------
+#  Analyze effects of PCA, LDA on the dataset
+# --------------------------------------------
 def PCA_LDA_effects_and_classification_analysis(D, L):
     # ANALYZE EFFECTS OF PCA ON THE FEATURES
     P = trainPCAmodel(D, 6)
@@ -214,17 +217,10 @@ def compare_gaussian_models_with_different_features(DTR, LTR, DVAL, LVAL):
     histsPlot(DTR_pca, LTR, "", 4)
     compare_gaussian_models(DTR_pca, LTR, DVAL_pca, LVAL)
 
-if __name__ == "__main__":
-    np.set_printoptions(precision=3, suppress=True)
-    
-    D, L = loadData("data/trainData.txt")
-    # Plot histograms for the features of the initial dataset
-    #histsPlot(D, L, "", 1)
-    
-    # Split dataset in train and eval
-    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
-    
-    # --- LAB 6 ---
+# -----------------------
+#  Evaluation/Bayes Risk
+# -----------------------
+def compare_effPriors_and_DCFs_for_different_applications(DTR, LTR, DVAL, LVAL):
     # Define 5 different applications
     applications = [(0.5, 1.0, 1.0), # uniform prior and costs
                     (0.9, 1.0, 1.0), # prior probability of Genuine sample is higher
@@ -261,6 +257,116 @@ if __name__ == "__main__":
             print(f"effPrior={effPrior}: norm_DCF={DCF:.3f}, min_DCF={min_DCF:.3f}, percent_loss={percent_loss:.3f}")
             
         plot_Bayes_error(evalset_llr_binary, LVAL, model)
+
+# ---------------------
+#  Logistic Regression
+# ---------------------
+def analyze_logistic_regression_with_different_lambdas(DTR, LTR, DVAL, LVAL, title):
+    actDCFs = []
+    minDCFs = []
+    lambs = np.logspace(-4, 2, 13)
+    pi = 0.1
+    for lamb in lambs:
+        w, b = trainLogReg(DTR, LTR, lamb) # Train model -> obtain model parameters w and b
+        sVal = np.dot(w.T, DVAL) + b # Compute validation scores
+        PVAL = np.zeros(LVAL.shape[0], dtype=np.int32) # Predict validation labels
+        PVAL[sVal > 0] = 1
+        PVAL[sVal < 0] = 0
+        err = (PVAL != LVAL).sum() / float(LVAL.size)
+        print('Error rate: %.2f' % (err*100))
+        
+        # Compute empirical prior
+        pEmp = (LTR == 1).sum() / LTR.size # Fraction of class 1 samples
+        # Compute LLR-like scores
+        sValLLr = sVal - np.log(pEmp / (1 - pEmp))
+        # Compute optimal decisions
+        PVALllr = np.zeros(LVAL.shape[0], dtype=np.int32) # Predict validation labels
+        PVALllr[sValLLr > 0] = 1
+        PVALllr[sValLLr < 0] = 0
+        conf_matr = compute_confusion_matrix(PVALllr, LVAL)
+        minDCF = compute_normalized_minDCF(sValLLr, LVAL, pi, 1.0, 1.0)
+        minDCFs.append(minDCF)
+        print('minDCF: %.4f' % minDCF)
+        actDCF = compute_normalized_DCF(pi, 1.0, 1.0, conf_matr)
+        actDCFs.append(actDCF)
+        print('actDCF: %.4f' % actDCF)
+    
+        print()
+        
+    plt.figure()
+    plt.plot(lambs, minDCFs, label="minDCF", color='r')
+    plt.plot(lambs, actDCFs, label="actDCF", color='b')
+    plt.xscale('log', base=10)
+    plt.ylabel('DCF value')
+    plt.xlabel('lambda value')
+    plt.title(title)
+    plt.show()
+
+def analyze_weighted_logistic_regression_with_different_lambdas(DTR, LTR, DVAL, LVAL, title):
+    actDCFs = []
+    minDCFs = []
+    lambs = np.logspace(-4, 2, 13)
+    # Compute empirical prior
+    pEmp = (LTR == 1).sum() / LTR.size # Fraction of class 1 samples
+    
+    for lamb in lambs:
+        w, b = trainLogRegWeighted(DTR, LTR, lamb, pEmp) # Train model -> obtain model parameters w and b
+        sVal = np.dot(w.T, DVAL) + b # Compute validation scores
+        PVAL = np.zeros(LVAL.shape[0], dtype=np.int32) # Predict validation labels
+        PVAL[sVal > 0] = 1
+        PVAL[sVal < 0] = 0
+        err = (PVAL != LVAL).sum() / float(LVAL.size)
+        print('Error rate: %.2f' % (err*100))
+    
+        # Compute LLR-like scores
+        sValLLr = sVal - np.log(pEmp / (1 - pEmp))
+        # Compute optimal decisions
+        PVALllr = np.zeros(LVAL.shape[0], dtype=np.int32) # Predict validation labels
+        PVALllr[sValLLr > 0] = 1
+        PVALllr[sValLLr < 0] = 0
+        conf_matr = compute_confusion_matrix(PVALllr, LVAL)
+        pi = 0.1
+        minDCF = compute_normalized_minDCF(sValLLr, LVAL, pi, 1.0, 1.0)
+        minDCFs.append(minDCF)
+        print('minDCF: %.4f' % minDCF)
+        actDCF = compute_normalized_DCF(pi, 1.0, 1.0, conf_matr)
+        actDCFs.append(actDCF)
+        print('actDCF: %.4f' % actDCF)
+    
+        print()
+        
+    plt.figure()
+    plt.plot(lambs, minDCFs, label="minDCF", color='r')
+    plt.plot(lambs, actDCFs, label="actDCF", color='b')
+    plt.xscale('log', base=10)
+    plt.ylabel('DCF value')
+    plt.xlabel('lambda value')
+    plt.title(title)
+    plt.show()
+
+if __name__ == "__main__":
+    np.set_printoptions(precision=3, suppress=True)
+    
+    D, L = loadData("data/trainData.txt")
+    # Plot histograms for the features of the initial dataset
+    #histsPlot(D, L, "", 1)
+    
+    # Split dataset in train and eval
+    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
+    
+    compare_effPriors_and_DCFs_for_different_applications(DTR, LTR, DVAL, LVAL)
+    
+    # --- LAB 7 ---
+    #analyze_logistic_regression_with_different_lambdas(DTR, LTR, DVAL, LVAL, "Full-Dataset - Non-Weighted")
+    
+    # Analyze Logistic Regression results with reduced dataset
+    DTR_reduced = DTR[:, ::50]
+    LTR_reduced = LTR[::50]
+    #analyze_logistic_regression_with_different_lambdas(DTR_reduced, LTR_reduced, DVAL, LVAL, "1/50 Dataset - Non-Weighted")
+    
+    DTR_expanded = quadratic_expansion(DTR)
+    DVAL_expanded = quadratic_expansion(DVAL)
+    #analyze_logistic_regression_with_different_lambdas(DTR_expanded, LTR, DVAL_expanded, LVAL, "Expanded Dataset - Non-Weighted")
             
         
     

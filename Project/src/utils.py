@@ -52,3 +52,9 @@ def compute_confusion_matrix(predictions, true_labels):
         conf_matrix[p][t] += 1
         
     return conf_matrix
+
+def quadratic_expansion(X):
+    xxT_all = X[:, None, :] * X[None, :, :]
+    vec_xxT_all = xxT_all.reshape(-1, X.shape[1])
+    phi_X = np.vstack([vec_xxT_all, X])
+    return phi_X
