@@ -103,11 +103,59 @@ def train_dual_SVM_linear(DTR, LTR, C, K):
   
     return w, b
 
+##############
+# Kernel SVM #
+##############
+def train_dual_SVM_kernel(DTR, LTR, C, kernelFunc, eps = 1.0):
+    ZTR = LTR * 2.0 - 1.0 # Convert labels to -1/+1
+    K = kernelFunc(DTR, DTR) + eps # Replace DTR dot product with Kernel Function
+    H = vcol(ZTR) * vrow(ZTR) * K
+    
+    # Dual objective and gradient
+    def fOpt(alpha):
+        Halpha = H @ vcol(alpha)
+        loss = 0.5 * (vrow(alpha) @ Halpha).ravel() - alpha.sum() # L^D(alpha) = -J^D(alpha)
+        grad = Halpha.ravel() - np.ones(alpha.size)
+        return loss, grad
+    
+    # Search the minimazer of the loss function
+    alphaStar, _, _ = scipy.optimize.fmin_l_bfgs_b(fOpt, np.zeros(DTR.shape[1]), bounds = [(0, C) for i in LTR], factr=np.nan, pgtol=1e-5)
+    
+    def primalLoss(alpha):
+        Halpha = H @ vcol(alpha)
+        return 0.5 * (vrow(alpha) @ Halpha) + C * np.maximum(0, 1 - Halpha).sum()
+
+    primalLoss, dualLoss = primalLoss(alphaStar), -fOpt(alphaStar)[0][0]
+    print('SVM (Kernel) - C %f - primal loss %e - dual loss %e - duality gap %e' % (C, primalLoss, dualLoss, primalLoss - dualLoss))
+    
+    # Compute scores for samples in DTE
+    def fScore(DTE):
+        K = kernelFunc(DTR, DTE) + eps
+        H = vcol(alphaStar) * vcol(ZTR) * K
+        return H.sum(0)
+    
+    return fScore # Directly return the function to compute scores of test samples matrix
+
+####################
+# Kernel Functions #
+####################
+def polyKernel(degree, c):
+    def polyKernelFunc(D1, D2):
+        return (np.dot(D1.T, D2) + c)**degree
+    return polyKernelFunc
+
+def rbfKernel(gamma):
+    def rbfKernelFunc(D1, D2):
+        D1Norms = (D1**2).sum(0)
+        D2Norms = (D2**2).sum(0)
+        Z = vcol(D1Norms) + vrow(D2Norms) - 2 * np.dot(D1.T, D2)
+        return np.exp(-gamma * Z)
+    return rbfKernelFunc
+
 if __name__ == '__main__':
     
     D, L = load_iris_binary()
     (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
-    K = 1; C = 0.1
     for K in [1, 10]:
         for C in [0.1, 1.0, 10.0]:
             w, b = train_dual_SVM_linear(DTR, LTR, C, K)    # Train SVM model -> Return model parameters
@@ -117,3 +165,15 @@ if __name__ == '__main__':
             print('Error rate: %.1f' % (err*100))
             print('minDCF - pT = 0.5: %.4f' % compute_normalized_minDCF(SVAL, LVAL, 0.5, 1.0, 1.0))
             print('actDCF - pT = 0.5: %.4f' % compute_normalized_DCF(0.5, 1.0, 1.0, compute_confusion_matrix(PVAL, LVAL)))
+            print()
+            
+    for kernelFunc in [polyKernel(2, 0), polyKernel(2, 1), rbfKernel(1.0), rbfKernel(10.0)]:
+        for eps in [0.0, 1.0]:
+            fScore = train_dual_SVM_kernel(DTR, LTR, 1.0, kernelFunc, eps)
+            SVAL = fScore(DVAL)
+            PVAL = (SVAL > 0) * 1
+            err = (PVAL != LVAL).sum() / float(LVAL.size)
+            print('Error rate: %.1f' % (err*100))
+            print('minDCF - pT = 0.5: %.4f' % compute_normalized_minDCF(SVAL, LVAL, 0.5, 1.0, 1.0))
+            print('actDCF - pT = 0.5: %.4f' % compute_normalized_DCF(0.5, 1.0, 1.0, compute_confusion_matrix(PVAL, LVAL)))
+            print()
