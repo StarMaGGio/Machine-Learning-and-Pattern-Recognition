@@ -58,3 +58,19 @@ def quadratic_expansion(X):
     vec_xxT_all = xxT_all.reshape(-1, X.shape[1])
     phi_X = np.vstack([vec_xxT_all, X])
     return phi_X
+
+####################
+# Kernel Functions #
+####################
+def polyKernel(degree, c):
+    def polyKernelFunc(D1, D2):
+        return (np.dot(D1.T, D2) + c)**degree
+    return polyKernelFunc
+
+def rbfKernel(gamma):
+    def rbfKernelFunc(D1, D2):
+        D1Norms = (D1**2).sum(0)
+        D2Norms = (D2**2).sum(0)
+        Z = vcol(D1Norms) + vrow(D2Norms) - 2 * np.dot(D1.T, D2)
+        return np.exp(-gamma * Z)
+    return rbfKernelFunc

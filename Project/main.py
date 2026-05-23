@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
 import numpy as np
+import math
 import matplotlib.pyplot as plt
-from src.utils import loadData, split_db_2to1, computeCovariance, vrow, vcol, computeCorrelationMatrix, compute_confusion_matrix, quadratic_expansion
+from src.utils import loadData, split_db_2to1, computeCovariance, vrow, vcol, computeCorrelationMatrix, compute_confusion_matrix, quadratic_expansion, polyKernel, rbfKernel
 from src.visualization import histsPlot, plot_distribution_density, plot_Bayes_error
 from src.dimensionality_reduction import trainPCAmodel, trainLDAmodel
 from src.ML_estimate_for_Gaussian import logpdf_GAU_ND
 from src.gaussian_models import compute_llr_for_classification, compute_predictions_with_llr, compute_error_rate, compute_llr_MVG, compute_llr_Tied_Gaussian, compute_llr_Naive_Bayes_Gaussian
 from src.bayes_decisions_model import compute_optimal_bayes_decisions, compute_normalized_DCF, compute_normalized_minDCF
 from src.logistic_regression import trainLogReg, trainLogRegWeighted
+from src.support_vector_machines import train_dual_SVM_linear, train_dual_SVM_kernel
 
 # --------------------------------------------
 #  Analyze effects of PCA, LDA on the dataset
@@ -354,19 +356,128 @@ if __name__ == "__main__":
     # Split dataset in train and eval
     (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
     
-    compare_effPriors_and_DCFs_for_different_applications(DTR, LTR, DVAL, LVAL)
+    #compare_effPriors_and_DCFs_for_different_applications(DTR, LTR, DVAL, LVAL)
     
     # --- LAB 7 ---
     #analyze_logistic_regression_with_different_lambdas(DTR, LTR, DVAL, LVAL, "Full-Dataset - Non-Weighted")
     
     # Analyze Logistic Regression results with reduced dataset
-    DTR_reduced = DTR[:, ::50]
-    LTR_reduced = LTR[::50]
+    # DTR_reduced = DTR[:, ::50]
+    # LTR_reduced = LTR[::50]
     #analyze_logistic_regression_with_different_lambdas(DTR_reduced, LTR_reduced, DVAL, LVAL, "1/50 Dataset - Non-Weighted")
     
-    DTR_expanded = quadratic_expansion(DTR)
-    DVAL_expanded = quadratic_expansion(DVAL)
+    # DTR_expanded = quadratic_expansion(DTR)
+    # DVAL_expanded = quadratic_expansion(DVAL)
     #analyze_logistic_regression_with_different_lambdas(DTR_expanded, LTR, DVAL_expanded, LVAL, "Expanded Dataset - Non-Weighted")
             
-        
+    # --- LAB 8 ---
+    DTR_reduced = DTR#[:, ::50]
+    LTR_reduced = LTR#[::50]
+    DVAL_reduced = DVAL#[:, ::50]
+    LVAL_reduced = LVAL#[::50]
+    
+    # SVM linear
+    K = 1.0
+    Cs = np.logspace(-5, 0, 11)   
+    minDCFs = []
+    actDCFs = []
+    for C in Cs:
+        w, b = train_dual_SVM_linear(DTR_reduced, LTR_reduced, C, K)    # Train SVM model -> Return model parameters
+        SVAL = (vrow(w) @ DVAL_reduced + b).ravel()             # Compute scores
+        PVAL = (SVAL > 0) * 1                           # Compute predictions
+        err = (PVAL != LVAL_reduced).sum() / float(LVAL_reduced.size)   # Copute predictions error
+        print('Error rate: %.1f' % (err*100))
+        minDCFs.append(compute_normalized_minDCF(SVAL, LVAL_reduced, 0.1, 1.0, 1.0))
+        actDCFs.append(compute_normalized_DCF(0.1, 1.0, 1.0, compute_confusion_matrix(PVAL, LVAL_reduced)))
+    plt.figure()
+    plt.plot(Cs, minDCFs, label="minDCF", color='r')
+    plt.plot(Cs, actDCFs, label="actDCF", color='b')
+    plt.xscale('log', base=10)
+    plt.ylabel('DCF value')
+    plt.xlabel('C value')
+    plt.title("SVM Linear")
+    plt.legend()
+    plt.show()
+    print()
+    
+    # SVM linear centered data
+    minDCFs.clear()
+    actDCFs.clear()
+    mu = DTR_reduced.mean(1).reshape((DTR_reduced.shape[0], 1))
+    DTR_reduced_centered = DTR_reduced - mu
+    DVAL_reduced_centered = DVAL_reduced - mu
+    for C in Cs:
+        w, b = train_dual_SVM_linear(DTR_reduced_centered, LTR_reduced, C, K)    # Train SVM model -> Return model parameters
+        SVAL = (vrow(w) @ DVAL_reduced_centered + b).ravel()             # Compute scores
+        PVAL = (SVAL > 0) * 1                           # Compute predictions
+        err = (PVAL != LVAL_reduced).sum() / float(LVAL_reduced.size)   # Copute predictions error
+        print('Error rate: %.1f' % (err*100))
+        minDCFs.append(compute_normalized_minDCF(SVAL, LVAL_reduced, 0.1, 1.0, 1.0))
+        actDCFs.append(compute_normalized_DCF(0.1, 1.0, 1.0, compute_confusion_matrix(PVAL, LVAL_reduced)))
+    plt.figure()
+    plt.plot(Cs, minDCFs, label="minDCF", color='r')
+    plt.plot(Cs, actDCFs, label="actDCF", color='b')
+    plt.xscale('log', base=10)
+    plt.ylabel('DCF value')
+    plt.xlabel('C value')
+    plt.title("SVM Linear Centered Data")
+    plt.legend()
+    plt.show()
+    print()
+    
+    # SVM Polynomial Kernel
+    minDCFs.clear()
+    actDCFs.clear()
+    kernelFunc = polyKernel(2, 1)
+    eps = 0.0
+    for C in Cs:
+        fScore = train_dual_SVM_kernel(DTR_reduced, LTR_reduced, C, kernelFunc, eps)
+        SVAL = fScore(DVAL_reduced)
+        PVAL = (SVAL > 0) * 1
+        err = (PVAL != LVAL_reduced).sum() / float(LVAL_reduced.size)
+        print('Error rate: %.1f' % (err*100))
+        minDCFs.append(compute_normalized_minDCF(SVAL, LVAL_reduced, 0.1, 1.0, 1.0))
+        actDCFs.append(compute_normalized_DCF(0.1, 1.0, 1.0, compute_confusion_matrix(PVAL, LVAL_reduced)))
+    plt.figure()
+    plt.plot(Cs, minDCFs, label="minDCF", color='r')
+    plt.plot(Cs, actDCFs, label="actDCF", color='b')
+    plt.xscale('log', base=10)
+    plt.ylabel('DCF value')
+    plt.xlabel('C value')
+    plt.title("SVM Polynomial Kernel")
+    plt.legend()
+    plt.show()
+    print()
+    
+    # SVM RBF Kernel
+    eps = 1.0
+    Cs = np.logspace(-3, 2, 11)
+    plt.figure()
+    hLinestyles = {
+        0: '-',
+        1: '--',
+        2: '-.',
+        3: ':'
+    }
+    i = 0
+    for kernelFunc in [rbfKernel(math.exp(-4)), rbfKernel(math.exp(-3)), rbfKernel(math.exp(-2)), rbfKernel(math.exp(-1))]:
+        minDCFs.clear()
+        actDCFs.clear()
+        for C in Cs:
+            fScore = train_dual_SVM_kernel(DTR_reduced, LTR_reduced, C, kernelFunc, eps)
+            SVAL = fScore(DVAL_reduced)
+            PVAL = (SVAL > 0) * 1
+            err = (PVAL != LVAL_reduced).sum() / float(LVAL_reduced.size)
+            print('Error rate: %.1f' % (err*100))
+            minDCFs.append(compute_normalized_minDCF(SVAL, LVAL_reduced, 0.1, 1.0, 1.0))
+            actDCFs.append(compute_normalized_DCF(0.1, 1.0, 1.0, compute_confusion_matrix(PVAL, LVAL_reduced)))
+        plt.plot(Cs, minDCFs, label=f"minDCF - gamma: e^{i-4}", color='r', linestyle=hLinestyles[i])
+        plt.plot(Cs, actDCFs, label=f"actDCF - gamma: e^{i-4}", color='b', linestyle=hLinestyles[i])
+        i = i + 1
+    plt.xscale('log', base=10)
+    plt.ylabel('DCF value')
+    plt.xlabel('C value')
+    plt.title("SVM RBF Kernel")
+    plt.legend()
+    plt.show()
     
