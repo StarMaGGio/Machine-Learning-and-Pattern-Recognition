@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from src.gaussian_mixture_models import logpdf_GMM, train_GMM_LBG_EM
 import numpy as np
 import math
 import matplotlib.pyplot as plt
@@ -346,31 +347,10 @@ def analyze_weighted_logistic_regression_with_different_lambdas(DTR, LTR, DVAL, 
     plt.title(title)
     plt.show()
 
-if __name__ == "__main__":
-    np.set_printoptions(precision=3, suppress=True)
-    
-    D, L = loadData("data/trainData.txt")
-    # Plot histograms for the features of the initial dataset
-    #histsPlot(D, L, "", 1)
-    
-    # Split dataset in train and eval
-    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
-    
-    #compare_effPriors_and_DCFs_for_different_applications(DTR, LTR, DVAL, LVAL)
-    
-    # --- LAB 7 ---
-    #analyze_logistic_regression_with_different_lambdas(DTR, LTR, DVAL, LVAL, "Full-Dataset - Non-Weighted")
-    
-    # Analyze Logistic Regression results with reduced dataset
-    # DTR_reduced = DTR[:, ::50]
-    # LTR_reduced = LTR[::50]
-    #analyze_logistic_regression_with_different_lambdas(DTR_reduced, LTR_reduced, DVAL, LVAL, "1/50 Dataset - Non-Weighted")
-    
-    # DTR_expanded = quadratic_expansion(DTR)
-    # DVAL_expanded = quadratic_expansion(DVAL)
-    #analyze_logistic_regression_with_different_lambdas(DTR_expanded, LTR, DVAL_expanded, LVAL, "Expanded Dataset - Non-Weighted")
-            
-    # --- LAB 8 ---
+# ------------------------
+# Support Vector Machines
+# ------------------------
+def analyze_SVM_with_different_kernels(DTR, LTR, DVAL, LVAL):
     DTR_reduced = DTR#[:, ::50]
     LTR_reduced = LTR#[::50]
     DVAL_reduced = DVAL#[:, ::50]
@@ -481,3 +461,85 @@ if __name__ == "__main__":
     plt.legend()
     plt.show()
     
+# ------------------------
+# Gaussian Mixture Models
+# ------------------------
+def analyze_GMM_with_different_components(DTR, LTR, DVAL, LVAL):
+    n_classes_binary = len(np.unique(L))
+    components_to_test = [1, 2, 4, 8, 16]
+
+    print("\n--- GMM for binary classification ---")
+    for n_components in components_to_test:
+        gmm_per_class_binary = {}
+        for c in range(n_classes_binary):
+            DTR_c = DTR[:, LTR == c]
+            gmm_per_class_binary[c] = train_GMM_LBG_EM(DTR_c, n_components)
+
+        logSPost_binary = np.zeros((n_classes_binary, DVAL.shape[1]))
+        for c in range(n_classes_binary):
+            logSPost_binary[c, :] = logpdf_GMM(DVAL, gmm_per_class_binary[c]) + np.log(1/n_classes_binary)
+
+        llr_binary = logSPost_binary[1, :] - logSPost_binary[0, :]
+
+        PVAL_binary = np.argmax(logSPost_binary, axis=0)
+
+        print(f"Components: {n_components}: actual DCF: {compute_normalized_DCF(0.1, 1.0, 1.0, compute_confusion_matrix(PVAL_binary, LVAL)):.4f}")
+
+if __name__ == "__main__":
+    np.set_printoptions(precision=3, suppress=True)
+    
+    D, L = loadData("data/trainData.txt")
+    # Plot histograms for the features of the initial dataset
+    #histsPlot(D, L, "", 6)
+    
+    # Split dataset in train and eval
+    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
+    
+    #compare_effPriors_and_DCFs_for_different_applications(DTR, LTR, DVAL, LVAL)
+    
+    # --- LAB 7 ---
+    #analyze_logistic_regression_with_different_lambdas(DTR, LTR, DVAL, LVAL, "Full-Dataset - Non-Weighted")
+    
+    # Analyze Logistic Regression results with reduced dataset
+    # DTR_reduced = DTR[:, ::50]
+    # LTR_reduced = LTR[::50]
+    #analyze_logistic_regression_with_different_lambdas(DTR_reduced, LTR_reduced, DVAL, LVAL, "1/50 Dataset - Non-Weighted")
+    
+    # DTR_expanded = quadratic_expansion(DTR)
+    # DVAL_expanded = quadratic_expansion(DVAL)
+    #analyze_logistic_regression_with_different_lambdas(DTR_expanded, LTR, DVAL_expanded, LVAL, "Expanded Dataset - Non-Weighted")
+            
+    # --- LAB 9 ---
+    # Qualitative analysis of Logistic Regression vs SVM vs GMM models for different applications
+    effPriorLogOdds = np.linspace(-4, 4, 21)
+    effPriors = 1.0 / (1.0 + np.exp(-effPriorLogOdds)) # Array of effective priors from 0.018 to 0.982 (different applications)
+    # Train & Score Weighted Logistic Regression
+    print("Training Weighted Logistic Regression...")
+    pEmp = (LTR == 1).sum() / LTR.size
+    lamb = 10 ** -1.5
+    w, b = trainLogRegWeighted(DTR, LTR, lamb, pEmp)
+    sVal_lr = np.dot(w.T, DVAL) + b
+    llr_lr = sVal_lr - np.log(pEmp / (1 - pEmp))
+
+    # Train & Score SVM with RBF Kernel
+    print("Training SVM with RBF Kernel...")
+    kernelFunc = rbfKernel(math.exp(-2))
+    C = 10 ** 1.5
+    fScore = train_dual_SVM_kernel(DTR, LTR, C, kernelFunc, eps=1.0)
+    llr_svm = fScore(DVAL)
+
+    # Train & Score GMM with 8 components
+    print("Training GMM with 8 components...")
+    n_components = 8
+    n_classes_binary = len(np.unique(L))
+    gmm_per_class_binary = {}
+    for c in range(n_classes_binary):
+        DTR_c = DTR[:, LTR == c]
+        gmm_per_class_binary[c] = train_GMM_LBG_EM(DTR_c, n_components)
+    logSPost_binary = np.zeros((n_classes_binary, DVAL.shape[1]))
+    for c in range(n_classes_binary):
+        logSPost_binary[c, :] = logpdf_GMM(DVAL, gmm_per_class_binary[c]) + np.log(1/n_classes_binary)
+    llr_gmm = logSPost_binary[1, :] - logSPost_binary[0, :]
+
+    # Analyze results for different applications (effective priors)
+    #...
