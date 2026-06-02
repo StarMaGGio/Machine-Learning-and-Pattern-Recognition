@@ -87,9 +87,6 @@ def compute_optimal_bayes_decisions(effPrior, evalset_llr_binary, evalset_labels
     
     return predicted_labels_binary
 
-
-
-
 def trainLogRegWeighted(DTR, LTR, l, pi):
     
     ZTR = LTR * 2.0 - 1.0
@@ -124,6 +121,9 @@ def trainLogRegWeighted(DTR, LTR, l, pi):
     return vf[: -1], vf[-1]
 
 
+
+
+
 def plot_min_act_DCF_for_two_systems(scores_1, scores_2, labels, pi, title):
     # Compute and plot min and act DCF for the two systems
     minDCFs_1, min_DCFs_2, act_DCFs_1, act_DCFs_2 = [], [], [], []
@@ -152,7 +152,7 @@ def plot_min_act_DCF_for_two_systems(scores_1, scores_2, labels, pi, title):
     plt.show()
 
 def scores_calibration_single_fold(scores_1, scores_2, labels, pi):
-        # Split the scores and labels into 3 folds
+    # Split the scores and labels into 3 folds
     SCAL1, SVAL1 = scores_1[::3], np.hstack([scores_1[1::3], scores_1[2::3]])
     SCAL2, SVAL2 = scores_2[::3], np.hstack([scores_2[1::3], scores_2[2::3]])
     LCAL, LVAL = labels[::3], np.hstack([labels[1::3], labels[2::3]])
@@ -173,6 +173,45 @@ def scores_calibration_single_fold(scores_1, scores_2, labels, pi):
     # Plot the min and act DCF for the two systems with calibrated scores
     plot_min_act_DCF_for_two_systems(calibrated_SVAL1, calibrated_SVAL2, LVAL, pi, "Single fold - actual and minimum DCF of calibrated scores - calibration validation set")
 
+def scores_calibration_k_fold(scores_1, scores_2, labels, pi, K):
+    # Split scores and labels into K folds for cross-validation
+    fold_scores_1 = [scores_1[i::K] for i in range(K)]
+    fold_scores_2 = [scores_2[i::K] for i in range(K)]
+    fold_labels = [labels[i::K] for i in range(K)]
+
+    # Perform K-fold cross-validation for calibration
+    calibrated_SVAL1_folds, calibrated_SVAL2_folds = [], []
+    LVAL__folds = []
+    for k in range(K):
+        # Train the model with 4 folds and validate on the remaining fold
+        SCAL1 = np.hstack([fold_scores_1[i] for i in range(K) if i != k])
+        SCAL2 = np.hstack([fold_scores_2[i] for i in range(K) if i != k])
+        LCAL = np.hstack([fold_labels[i] for i in range(K) if i != k])
+        SVAL1 = fold_scores_1[k]
+        SVAL2 = fold_scores_2[k]
+        LVAL = fold_labels[k]
+
+        # Train calibration model (logistic regression) on the calibration training set
+        l = 1e-3
+        w1, b1 = trainLogRegWeighted(vrow(SCAL1), LCAL, l, pi)
+        w2, b2 = trainLogRegWeighted(vrow(SCAL2), LCAL, l, pi)
+
+        # Compute calibrated scores on the validation set
+        # Reshape validation scores to 1xN before applying weights and bias, and subtract the prior log-odds shift
+        calibrated_SVAL1 = (np.dot(w1.T, vrow(SVAL1)) + b1 - np.log(pi / (1 - pi))).ravel()
+        calibrated_SVAL2 = (np.dot(w2.T, vrow(SVAL2)) + b2 - np.log(pi / (1 - pi))).ravel()
+
+        calibrated_SVAL1_folds.append(calibrated_SVAL1)
+        calibrated_SVAL2_folds.append(calibrated_SVAL2)
+        LVAL__folds.append(LVAL)
+
+    # Concatenate calibrated scores and labels from all folds
+    calibrated_scores_1 = np.hstack(calibrated_SVAL1_folds)
+    calibrated_scores_2 = np.hstack(calibrated_SVAL2_folds)
+    L = np.hstack(LVAL__folds)
+
+    # Plot the min and act DCF for the two systems with calibrated scores on the full dataset
+    plot_min_act_DCF_for_two_systems(calibrated_SVAL1, calibrated_SVAL2, L, pi, "K-fold - minimum DCF, actual DCF of calibrated scores - calibration validation set")
 
 if __name__ == '__main__':
     scores_1 = np.load("Data/scores_1.npy")
@@ -182,4 +221,6 @@ if __name__ == '__main__':
 
     #plot_min_act_DCF_for_two_systems(scores_1, scores_2, labels, pi, "single fold - actual and minimum DCF of original raw scores - full dataset")
 
-    scores_calibration_single_fold(scores_1, scores_2, labels, pi)
+    #scores_calibration_single_fold(scores_1, scores_2, labels, pi)
+
+    #scores_calibration_k_fold(scores_1, scores_2, labels, pi, K=5)
