@@ -511,8 +511,7 @@ if __name__ == "__main__":
             
     # --- LAB 9 ---
     # Qualitative analysis of Logistic Regression vs SVM vs GMM models for different applications
-    effPriorLogOdds = np.linspace(-4, 4, 21)
-    effPriors = 1.0 / (1.0 + np.exp(-effPriorLogOdds)) # Array of effective priors from 0.018 to 0.982 (different applications)
+    
     # Train & Score Weighted Logistic Regression
     print("Training Weighted Logistic Regression...")
     pEmp = (LTR == 1).sum() / LTR.size
@@ -534,12 +533,62 @@ if __name__ == "__main__":
     n_classes_binary = len(np.unique(L))
     gmm_per_class_binary = {}
     for c in range(n_classes_binary):
+        print(f"Progress: {c / n_classes_binary * 100:.1f}%", end='\r')
         DTR_c = DTR[:, LTR == c]
         gmm_per_class_binary[c] = train_GMM_LBG_EM(DTR_c, n_components)
+    print("Progress: 100.0%")
     logSPost_binary = np.zeros((n_classes_binary, DVAL.shape[1]))
     for c in range(n_classes_binary):
         logSPost_binary[c, :] = logpdf_GMM(DVAL, gmm_per_class_binary[c]) + np.log(1/n_classes_binary)
     llr_gmm = logSPost_binary[1, :] - logSPost_binary[0, :]
 
     # Analyze results for different applications (effective priors)
-    #...
+    effPriorLogOdds = np.linspace(-4, 4, 21)
+    effPriors = 1.0 / (1.0 + np.exp(-effPriorLogOdds)) # Array of effective priors from 0.018 to 0.982 (different applications)
+    
+    print("Computing Bayes Errors for the three models...")
+    actDCFs_lr, minDCFs_lr = [], []
+    actDCFs_svm, minDCFs_svm = [], []
+    actDCFs_gmm, minDCFs_gmm = [], []
+
+    total_iters = len(effPriors)
+    for i, effPrior in enumerate(effPriors):
+        print(f"Progress: {i / total_iters * 100:.1f}%", end='\r')
+
+        # Logistic Regression
+        PVAL_lr = compute_optimal_bayes_decisions(effPrior, llr_lr, LVAL)
+        conf_matr_lr = compute_confusion_matrix(PVAL_lr, LVAL)
+        minDCFs_lr.append(compute_normalized_minDCF(llr_lr, LVAL, effPrior, 1.0, 1.0))
+        actDCFs_lr.append(compute_normalized_DCF(effPrior, 1.0, 1.0, conf_matr_lr))
+
+        # SVM
+        PVAL_svm = compute_optimal_bayes_decisions(effPrior, llr_svm, LVAL)
+        conf_matr_svm = compute_confusion_matrix(PVAL_svm, LVAL)
+        minDCFs_svm.append(compute_normalized_minDCF(llr_svm, LVAL, effPrior, 1.0, 1.0))
+        actDCFs_svm.append(compute_normalized_DCF(effPrior, 1.0, 1.0, conf_matr_svm))
+
+        # GMM
+        PVAL_gmm = compute_optimal_bayes_decisions(effPrior, llr_gmm, LVAL)
+        conf_matr_gmm = compute_confusion_matrix(PVAL_gmm, LVAL)
+        minDCFs_gmm.append(compute_normalized_minDCF(llr_gmm, LVAL, effPrior, 1.0, 1.0))
+        actDCFs_gmm.append(compute_normalized_DCF(effPrior, 1.0, 1.0, conf_matr_gmm))
+    print("Progress: 100.0%")
+
+    # Plot DCFs for the three models
+    plt.figure()
+    plt.plot(effPriorLogOdds, minDCFs_lr, label="minDCF - Logistic Regression", color='r', linestyle='-')
+    plt.plot(effPriorLogOdds, actDCFs_lr, label="actDCF - Logistic Regression", color='r', linestyle='--')
+    
+    plt.plot(effPriorLogOdds, minDCFs_svm, label="minDCF - SVM", color='b', linestyle='-')
+    plt.plot(effPriorLogOdds, actDCFs_svm, label="actDCF - SVM", color='b', linestyle='--')
+    
+    plt.plot(effPriorLogOdds, minDCFs_gmm, label="minDCF - GMM", color='g', linestyle='-')
+    plt.plot(effPriorLogOdds, actDCFs_gmm, label="actDCF - GMM", color='g', linestyle='--')
+
+    plt.ylim([0, 1.1])
+    plt.xlim([-4, 4])
+    plt.xlabel("Prior Log Odds")
+    plt.ylabel("DCF")
+    plt.title("Bayes Error Plot Comparison")
+    plt.legend()
+    plt.show()
