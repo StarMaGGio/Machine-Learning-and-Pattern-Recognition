@@ -11,6 +11,7 @@ from src.gaussian_models import compute_llr_for_classification, compute_predicti
 from src.bayes_decisions_model import compute_optimal_bayes_decisions, compute_normalized_DCF, compute_normalized_minDCF
 from src.logistic_regression import trainLogReg, trainLogRegWeighted
 from src.support_vector_machines import train_dual_SVM_linear, train_dual_SVM_kernel
+from spyder_kernels.utils.iofuncs import load_dictionary
 
 # --------------------------------------------
 #  Analyze effects of PCA, LDA on the dataset
@@ -485,47 +486,114 @@ def analyze_GMM_with_different_components(DTR, LTR, DVAL, LVAL):
 
         print(f"Components: {n_components}: actual DCF: {compute_normalized_DCF(0.1, 1.0, 1.0, compute_confusion_matrix(PVAL_binary, LVAL)):.4f}")
 
-if __name__ == "__main__":
-    np.set_printoptions(precision=3, suppress=True)
+# TODO: Move this function to a separate file
+def plot_min_act_actcal_DCF_for_n_systems(raw_scores_list, calibrated_scores_list, LVAL, pi, system_names):
+    effPriorLogOdds = np.linspace(-4, 4, 21)
+    effPriors = 1.0 / (1.0 + np.exp(-effPriorLogOdds))
+
+    # Print the name of all the systems
+    print(f"Computing Bayes Errors on raw scores of {len(raw_scores_list)} systems: {', '.join(system_names)}...")
+
+    rawActDCFs_list = []
+    calActDCFs_list = []
+    minDCFs_list = []
     
-    D, L = loadData("data/trainData.txt")
-    # Plot histograms for the features of the initial dataset
-    #histsPlot(D, L, "", 6)
+    total_iters = len(effPriors)
+    for i, effPrior in enumerate(effPriors):
+        print(f"Progress: {i / total_iters * 100:.1f}%", end='\r')
+
+        rawActDCFs = []
+        calActDCFs = []
+        minDCFs = []
+        for raw_scores, calibrated_scores in zip(raw_scores_list, calibrated_scores_list):
+            # Compute optimal decisions for raw scores
+            PVAL_raw = compute_optimal_bayes_decisions(effPrior, raw_scores, LVAL)
+            conf_matr_raw = compute_confusion_matrix(PVAL_raw, LVAL)
+            rawActDCFs.append(compute_normalized_DCF(effPrior, 1.0, 1.0, conf_matr_raw))
+            minDCFs.append(compute_normalized_minDCF(raw_scores, LVAL, effPrior, 1.0, 1.0))
+            # Compute optimal decisions for calibrated scores
+            PVAL_calibrated = compute_optimal_bayes_decisions(effPrior, calibrated_scores, LVAL)
+            conf_matr_calibrated = compute_confusion_matrix(PVAL_calibrated, LVAL)
+            calActDCFs.append(compute_normalized_DCF(effPrior, 1.0, 1.0, conf_matr_calibrated))
+        rawActDCFs_list.append(rawActDCFs)
+        calActDCFs_list.append(calActDCFs)
+        minDCFs_list.append(minDCFs)
+    print("Progress: 100.0%")
+
+    colors = ['r', 'b', 'g', 'c', 'm', 'y', 'k']
+    plt.figure()
+    for i in range(len(system_names)):
+        c = colors[i % len(colors)]
+        plt.plot(effPriorLogOdds, [rawActDCFs[i] for rawActDCFs in rawActDCFs_list], label=f"{system_names[i]} - actDCF (raw)", color=c, linestyle=':')
+        plt.plot(effPriorLogOdds, [calActDCFs[i] for calActDCFs in calActDCFs_list], label=f"{system_names[i]} - actDCF (calibrated)", color=c, linestyle='--')
+        plt.plot(effPriorLogOdds, [minDCFs[i] for minDCFs in minDCFs_list], label=f"{system_names[i]} - minDCF", color=c, linestyle='-')
+    plt.xlabel('Effective Prior Log Odds')
+    plt.ylabel('DCF value')
+    plt.title('DCF vs Effective Prior Log Odds for Multiple Systems')
+    plt.legend()
+    plt.ylim([0, 1.1])
+    plt.xlim([-3, 3])
+    plt.show()
+
+def plot_min_act_DCF_for_n_systems(scores_list, LVAL, pi, system_names):
+    effPriorLogOdds = np.linspace(-4, 4, 21)
+    effPriors = 1.0 / (1.0 + np.exp(-effPriorLogOdds))
+
+    # Print the name of all the systems
+    print(f"Computing Bayes Errors on scores of {len(scores_list)} systems: {', '.join(system_names)}...")
+
+    actDCFs_list = []
+    minDCFs_list = []
     
-    # Split dataset in train and eval
-    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
+    total_iters = len(effPriors)
+    for i, effPrior in enumerate(effPriors):
+        print(f"Progress: {i / total_iters * 100:.1f}%", end='\r')
+
+        actDCFs = []
+        minDCFs = []
+        for scores in scores_list:
+            # Compute optimal decisions for raw scores
+            PVAL_raw = compute_optimal_bayes_decisions(effPrior, scores, LVAL)
+            conf_matr_raw = compute_confusion_matrix(PVAL_raw, LVAL)
+            actDCFs.append(compute_normalized_DCF(effPrior, 1.0, 1.0, conf_matr_raw))
+            minDCFs.append(compute_normalized_minDCF(scores, LVAL, effPrior, 1.0, 1.0))
+        actDCFs_list.append(actDCFs)
+        minDCFs_list.append(minDCFs)
+    print("Progress: 100.0%")
+
     
-    #compare_effPriors_and_DCFs_for_different_applications(DTR, LTR, DVAL, LVAL)
-    
-    # --- LAB 7 ---
-    #analyze_logistic_regression_with_different_lambdas(DTR, LTR, DVAL, LVAL, "Full-Dataset - Non-Weighted")
-    
-    # Analyze Logistic Regression results with reduced dataset
-    # DTR_reduced = DTR[:, ::50]
-    # LTR_reduced = LTR[::50]
-    #analyze_logistic_regression_with_different_lambdas(DTR_reduced, LTR_reduced, DVAL, LVAL, "1/50 Dataset - Non-Weighted")
-    
-    # DTR_expanded = quadratic_expansion(DTR)
-    # DVAL_expanded = quadratic_expansion(DVAL)
-    #analyze_logistic_regression_with_different_lambdas(DTR_expanded, LTR, DVAL_expanded, LVAL, "Expanded Dataset - Non-Weighted")
-            
+    colors = ['r', 'b', 'g', 'c', 'm', 'y', 'k']
+    plt.figure()
+    for i in range(len(system_names)):
+        c = colors[i % len(colors)]
+        plt.plot(effPriorLogOdds, [actDCFs[i] for actDCFs in actDCFs_list], label=f"{system_names[i]} - actDCF", color=c, linestyle='--')
+        plt.plot(effPriorLogOdds, [minDCFs[i] for minDCFs in minDCFs_list], label=f"{system_names[i]} - minDCF", color=c, linestyle='-')
+    plt.xlabel('Effective Prior Log Odds')
+    plt.ylabel('DCF value')
+    plt.title('DCF vs Effective Prior Log Odds for Multiple Systems')
+    plt.legend()
+    plt.ylim([0, 1.1])
+    plt.xlim([-3, 3])
+    plt.show()
+
+def analyze_k_fold_calibration_impact():
     # --- LAB 9 ---
     # Qualitative analysis of Logistic Regression vs SVM vs GMM models for different applications
-    
+        
     # Train & Score Weighted Logistic Regression
     print("Training Weighted Logistic Regression...")
     pEmp = (LTR == 1).sum() / LTR.size
     lamb = 10 ** -1.5
     w, b = trainLogRegWeighted(DTR, LTR, lamb, pEmp)
-    sVal_lr = np.dot(w.T, DVAL) + b
-    llr_lr = sVal_lr - np.log(pEmp / (1 - pEmp))
+    sVal_lr_bias = np.dot(w.T, DVAL) + b
+    sVal_lr = (sVal_lr_bias - np.log(pEmp / (1 - pEmp))).ravel() # Validation scores for Logistic Regression -> to be calibrated
 
     # Train & Score SVM with RBF Kernel
     print("Training SVM with RBF Kernel...")
     kernelFunc = rbfKernel(math.exp(-2))
     C = 10 ** 1.5
     fScore = train_dual_SVM_kernel(DTR, LTR, C, kernelFunc, eps=1.0)
-    llr_svm = fScore(DVAL)
+    sVal_svm = fScore(DVAL) # Validation scores for SVM with RBF Kernel -> to be calibrated
 
     # Train & Score GMM with 8 components
     print("Training GMM with 8 components...")
@@ -540,55 +608,164 @@ if __name__ == "__main__":
     logSPost_binary = np.zeros((n_classes_binary, DVAL.shape[1]))
     for c in range(n_classes_binary):
         logSPost_binary[c, :] = logpdf_GMM(DVAL, gmm_per_class_binary[c]) + np.log(1/n_classes_binary)
-    llr_gmm = logSPost_binary[1, :] - logSPost_binary[0, :]
+    sVal_gmm = logSPost_binary[1, :] - logSPost_binary[0, :] # Validation scores for GMM with 8 components -> to be calibrated
 
     # Analyze results for different applications (effective priors)
-    effPriorLogOdds = np.linspace(-4, 4, 21)
-    effPriors = 1.0 / (1.0 + np.exp(-effPriorLogOdds)) # Array of effective priors from 0.018 to 0.982 (different applications)
+    # effPriorLogOdds = np.linspace(-4, 4, 21)
+    # effPriors = 1.0 / (1.0 + np.exp(-effPriorLogOdds)) # Array of effective priors from 0.018 to 0.982 (different applications)
     
-    print("Computing Bayes Errors for the three models...")
-    actDCFs_lr, minDCFs_lr = [], []
-    actDCFs_svm, minDCFs_svm = [], []
-    actDCFs_gmm, minDCFs_gmm = [], []
+    # print("Computing Bayes Errors on raw scores of the three models...")
+    # actDCFs_lr, minDCFs_lr = [], []
+    # actDCFs_svm, minDCFs_svm = [], []
+    # actDCFs_gmm, minDCFs_gmm = [], []
 
-    total_iters = len(effPriors)
-    for i, effPrior in enumerate(effPriors):
-        print(f"Progress: {i / total_iters * 100:.1f}%", end='\r')
+    # total_iters = len(effPriors)
+    # for i, effPrior in enumerate(effPriors):
+    #     print(f"Progress: {i / total_iters * 100:.1f}%", end='\r')
 
-        # Logistic Regression
-        PVAL_lr = compute_optimal_bayes_decisions(effPrior, llr_lr, LVAL)
-        conf_matr_lr = compute_confusion_matrix(PVAL_lr, LVAL)
-        minDCFs_lr.append(compute_normalized_minDCF(llr_lr, LVAL, effPrior, 1.0, 1.0))
-        actDCFs_lr.append(compute_normalized_DCF(effPrior, 1.0, 1.0, conf_matr_lr))
+    #     # Logistic Regression
+    #     PVAL_lr = compute_optimal_bayes_decisions(effPrior, sVal_lr, LVAL)
+    #     conf_matr_lr = compute_confusion_matrix(PVAL_lr, LVAL)
+    #     # minDCFs_lr.append(compute_normalized_minDCF(llr_lr, LVAL, effPrior, 1.0, 1.0))
+    #     actDCFs_lr.append(compute_normalized_DCF(effPrior, 1.0, 1.0, conf_matr_lr))
 
-        # SVM
-        PVAL_svm = compute_optimal_bayes_decisions(effPrior, llr_svm, LVAL)
-        conf_matr_svm = compute_confusion_matrix(PVAL_svm, LVAL)
-        minDCFs_svm.append(compute_normalized_minDCF(llr_svm, LVAL, effPrior, 1.0, 1.0))
-        actDCFs_svm.append(compute_normalized_DCF(effPrior, 1.0, 1.0, conf_matr_svm))
+    #     # SVM
+    #     PVAL_svm = compute_optimal_bayes_decisions(effPrior, sVal_svm, LVAL)
+    #     conf_matr_svm = compute_confusion_matrix(PVAL_svm, LVAL)
+    #     # minDCFs_svm.append(compute_normalized_minDCF(llr_svm, LVAL, effPrior, 1.0, 1.0))
+    #     actDCFs_svm.append(compute_normalized_DCF(effPrior, 1.0, 1.0, conf_matr_svm))
 
-        # GMM
-        PVAL_gmm = compute_optimal_bayes_decisions(effPrior, llr_gmm, LVAL)
-        conf_matr_gmm = compute_confusion_matrix(PVAL_gmm, LVAL)
-        minDCFs_gmm.append(compute_normalized_minDCF(llr_gmm, LVAL, effPrior, 1.0, 1.0))
-        actDCFs_gmm.append(compute_normalized_DCF(effPrior, 1.0, 1.0, conf_matr_gmm))
-    print("Progress: 100.0%")
+    #     # GMM
+    #     PVAL_gmm = compute_optimal_bayes_decisions(effPrior, sVal_gmm, LVAL)
+    #     conf_matr_gmm = compute_confusion_matrix(PVAL_gmm, LVAL)
+    #     # minDCFs_gmm.append(compute_normalized_minDCF(llr_gmm, LVAL, effPrior, 1.0, 1.0))
+    #     actDCFs_gmm.append(compute_normalized_DCF(effPrior, 1.0, 1.0, conf_matr_gmm))
+    # print("Progress: 100.0%")
 
     # Plot DCFs for the three models
-    plt.figure()
-    plt.plot(effPriorLogOdds, minDCFs_lr, label="minDCF - Logistic Regression", color='r', linestyle='-')
-    plt.plot(effPriorLogOdds, actDCFs_lr, label="actDCF - Logistic Regression", color='r', linestyle='--')
+    # plt.figure()
+    # plt.plot(effPriorLogOdds, minDCFs_lr, label="minDCF - Logistic Regression", color='r', linestyle='-')
+    # plt.plot(effPriorLogOdds, actDCFs_lr, label="actDCF - Logistic Regression", color='r', linestyle='--')
     
-    plt.plot(effPriorLogOdds, minDCFs_svm, label="minDCF - SVM", color='b', linestyle='-')
-    plt.plot(effPriorLogOdds, actDCFs_svm, label="actDCF - SVM", color='b', linestyle='--')
+    # plt.plot(effPriorLogOdds, minDCFs_svm, label="minDCF - SVM", color='b', linestyle='-')
+    # plt.plot(effPriorLogOdds, actDCFs_svm, label="actDCF - SVM", color='b', linestyle='--')
     
-    plt.plot(effPriorLogOdds, minDCFs_gmm, label="minDCF - GMM", color='g', linestyle='-')
-    plt.plot(effPriorLogOdds, actDCFs_gmm, label="actDCF - GMM", color='g', linestyle='--')
+    # plt.plot(effPriorLogOdds, minDCFs_gmm, label="minDCF - GMM", color='g', linestyle='-')
+    # plt.plot(effPriorLogOdds, actDCFs_gmm, label="actDCF - GMM", color='g', linestyle='--')
 
-    plt.ylim([0, 1.1])
-    plt.xlim([-4, 4])
-    plt.xlabel("Prior Log Odds")
-    plt.ylabel("DCF")
-    plt.title("Bayes Error Plot Comparison")
-    plt.legend()
-    plt.show()
+    # plt.ylim([0, 1.1])
+    # plt.xlim([-4, 4])
+    # plt.xlabel("Prior Log Odds")
+    # plt.ylabel("DCF")
+    # plt.title("Bayes Error Plot Comparison")
+    # plt.legend()
+    # plt.show()
+
+    # --- Lab 10 ---
+    # Compute calibration transformations for the three models on the validation set
+    # Split scores and labels into K folds
+
+    if (False):
+        # CHECK_POINT
+        # Load spydata from previous steps to avoid retraining models
+        data, error_msg = load_dictionary("raw_scores.spydata")
+        globals().update(data)
+        
+        D, L = loadData("data/trainData.txt")
+        # Plot histograms for the features of the initial dataset
+        #histsPlot(D, L, "", 6)
+        
+        # Split dataset in train and eval
+        (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
+    
+    K = 5
+    sVal_lr_folds = [sVal_lr[i::K] for i in range(K)]
+    sVal_svm_folds = [sVal_svm[i::K] for i in range(K)]
+    sVal_gmm_folds = [sVal_gmm[i::K] for i in range(K)]
+    LVAL_folds = [LVAL[i::K] for i in range(K)]
+
+    # Apply a K-fold cross-validation procedure to compute the optimal logistic regression parameters for calibration (C and K) for each model 
+    calibrated_sVal_lr = np.zeros_like(sVal_lr)
+    calibrated_sVal_svm = np.zeros_like(sVal_svm)
+    calibrated_sVal_gmm = np.zeros_like(sVal_gmm)
+
+    for k in range(K):
+        # Train the model on K-1 folds and validate on the remaining fold
+        SCAL_lr, SVAL_lr = np.hstack([sVal_lr_folds[i] for i in range(K) if i != k]), sVal_lr_folds[k]
+        SCAL_svm, SVAL_svm = np.hstack([sVal_svm_folds[i] for i in range(K) if i != k]), sVal_svm_folds[k]
+        SCAL_gmm, SVAL_gmm = np.hstack([sVal_gmm_folds[i] for i in range(K) if i != k]), sVal_gmm_folds[k]
+        LCAL, LVAL_k = np.hstack([LVAL_folds[i] for i in range(K) if i != k]), LVAL_folds[k]
+
+        # Train calibration model (logistic regression) on the calibration training set with the application prior (pEmp)
+        l = 1e-3
+        w_lr, b_lr = trainLogRegWeighted(vrow(SCAL_lr), LCAL, l, pEmp)
+        w_svm, b_svm = trainLogRegWeighted(vrow(SCAL_svm), LCAL, l, pEmp)
+        w_gmm, b_gmm = trainLogRegWeighted(vrow(SCAL_gmm), LCAL, l, pEmp)
+
+        # Compute calibrated scores on the validation fold
+        calibrated_sVal_lr[k::K] = (np.dot(w_lr.T, vrow(SVAL_lr)) + b_lr - np.log(pEmp / (1 - pEmp))).ravel()
+        calibrated_sVal_svm[k::K] = (np.dot(w_svm.T, vrow(SVAL_svm)) + b_svm - np.log(pEmp / (1 - pEmp))).ravel()
+        calibrated_sVal_gmm[k::K] = (np.dot(w_gmm.T, vrow(SVAL_gmm)) + b_gmm - np.log(pEmp / (1 - pEmp))).ravel()
+
+    plot_min_act_actcal_DCF_for_n_systems(raw_scores_list=[sVal_lr, sVal_svm, sVal_gmm], calibrated_scores_list=[calibrated_sVal_lr, calibrated_sVal_svm, calibrated_sVal_gmm], LVAL=LVAL, pi=pEmp, system_names=["Logistic Regression", "SVM RBF Kernel", "GMM 8 Components"])
+
+
+if __name__ == "__main__":
+
+    if (True):
+        np.set_printoptions(precision=3, suppress=True)
+        
+        #D, L = loadData("data/trainData.txt")
+        # Plot histograms for the features of the initial dataset
+        #histsPlot(D, L, "", 6)
+        
+        # Split dataset in train and eval
+        #(DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
+        
+        #compare_effPriors_and_DCFs_for_different_applications(DTR, LTR, DVAL, LVAL)
+        
+        # --- LAB 7 ---
+        #analyze_logistic_regression_with_different_lambdas(DTR, LTR, DVAL, LVAL, "Full-Dataset - Non-Weighted")
+        
+        # Analyze Logistic Regression results with reduced dataset
+        # DTR_reduced = DTR[:, ::50]
+        # LTR_reduced = LTR[::50]
+        #analyze_logistic_regression_with_different_lambdas(DTR_reduced, LTR_reduced, DVAL, LVAL, "1/50 Dataset - Non-Weighted")
+        
+        # DTR_expanded = quadratic_expansion(DTR)
+        # DVAL_expanded = quadratic_expansion(DVAL)
+        #analyze_logistic_regression_with_different_lambdas(DTR_expanded, LTR, DVAL_expanded, LVAL, "Expanded Dataset - Non-Weighted")
+                
+        # CHECK_POINT
+        # Load calibrated_scores
+        data, error_msg = load_dictionary("calibrated_scores.spydata")
+        globals().update(data)
+        
+        D, L = loadData("data/trainData.txt")
+        # Plot histograms for the features of the initial dataset
+        #histsPlot(D, L, "", 6)
+        
+        # Split dataset in train and eval
+        (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
+
+        # Compute score-level fusion of the three models (weighted logistic regression, SVM with RBF kernel, GMM with 8 components)
+        raw_scores_fusion = np.vstack([sVal_lr, sVal_svm, sVal_gmm])
+        # Appli k fold cross-validation to train the fusion model (logistic regression) on the validation set with the application prior (pEmp)
+        K = 5
+        sVal_fusion_folds = [raw_scores_fusion[:, i::K] for i in range(K)]
+        LVAL_folds = [LVAL[i::K] for i in range(K)]
+
+        calibrated_sVal_fusion = np.zeros_like(raw_scores_fusion[0])
+        for k in range(K):
+            # Train the model on K-1 folds and validate on the remaining fold
+            SCAL_fusion, SVAL_fusion = np.hstack([sVal_fusion_folds[i] for i in range(K) if i != k]), sVal_fusion_folds[k]
+            LCAL, LVAL_k = np.hstack([LVAL_folds[i] for i in range(K) if i != k]), LVAL_folds[k]
+
+            l = 1e-3
+            pEmp = (LTR == 1).sum() / LTR.size
+            w_fusion, b_fusion = trainLogRegWeighted(SCAL_fusion, LCAL, l, pEmp)
+
+            calibrated_sVal_fusion[k::K] = (np.dot(w_fusion.T, SVAL_fusion) + b_fusion - np.log(pEmp / (1 - pEmp))).ravel()
+        
+        # Compute and print DCF for the fused system
+        plot_min_act_DCF_for_n_systems(scores_list=[calibrated_sVal_lr, calibrated_sVal_svm, calibrated_sVal_gmm, calibrated_sVal_fusion], LVAL=LVAL, pi=pEmp, system_names=["Logistic Regression", "SVM RBF Kernel", "GMM 8 Components", "Fused System"])
