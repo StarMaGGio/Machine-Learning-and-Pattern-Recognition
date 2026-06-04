@@ -486,7 +486,7 @@ def analyze_GMM_with_different_components(DTR, LTR, DVAL, LVAL):
 
         print(f"Components: {n_components}: actual DCF: {compute_normalized_DCF(0.1, 1.0, 1.0, compute_confusion_matrix(PVAL_binary, LVAL)):.4f}")
 
-# TODO: Move this function to a separate file
+# TODO: Move these functions to a separate files
 def plot_min_act_actcal_DCF_for_n_systems(raw_scores_list, calibrated_scores_list, LVAL, pi, system_names):
     effPriorLogOdds = np.linspace(-4, 4, 21)
     effPriors = 1.0 / (1.0 + np.exp(-effPriorLogOdds))
@@ -576,6 +576,9 @@ def plot_min_act_DCF_for_n_systems(scores_list, LVAL, pi, system_names):
     plt.xlim([-3, 3])
     plt.show()
 
+# ------------------------------
+# Scores Calibration and Fusion
+# ------------------------------
 def analyze_k_fold_calibration_impact():
     # --- LAB 9 ---
     # Qualitative analysis of Logistic Regression vs SVM vs GMM models for different applications
@@ -698,9 +701,9 @@ def analyze_k_fold_calibration_impact():
 
         # Train calibration model (logistic regression) on the calibration training set with the application prior (pEmp)
         l = 1e-3
-        w_lr, b_lr = trainLogRegWeighted(vrow(SCAL_lr), LCAL, l, pEmp)
-        w_svm, b_svm = trainLogRegWeighted(vrow(SCAL_svm), LCAL, l, pEmp)
-        w_gmm, b_gmm = trainLogRegWeighted(vrow(SCAL_gmm), LCAL, l, pEmp)
+        w_lr, b_lr = trainLogRegWeighted(vrow(SCAL_lr), LCAL, l, pEmp)    # Calibration model for Logistic Regression
+        w_svm, b_svm = trainLogRegWeighted(vrow(SCAL_svm), LCAL, l, pEmp) # Calibration model for SVM with RBF kernel
+        w_gmm, b_gmm = trainLogRegWeighted(vrow(SCAL_gmm), LCAL, l, pEmp) # Calibration model for GMM with 8 components
 
         # Compute calibrated scores on the validation fold
         calibrated_sVal_lr[k::K] = (np.dot(w_lr.T, vrow(SVAL_lr)) + b_lr - np.log(pEmp / (1 - pEmp))).ravel()
@@ -709,63 +712,114 @@ def analyze_k_fold_calibration_impact():
 
     plot_min_act_actcal_DCF_for_n_systems(raw_scores_list=[sVal_lr, sVal_svm, sVal_gmm], calibrated_scores_list=[calibrated_sVal_lr, calibrated_sVal_svm, calibrated_sVal_gmm], LVAL=LVAL, pi=pEmp, system_names=["Logistic Regression", "SVM RBF Kernel", "GMM 8 Components"])
 
+def analyze_score_level_fusion_impact():
+    # Compute score-level fusion of the three models (weighted logistic regression, SVM with RBF kernel, GMM with 8 components)
+    raw_scores_fusion = np.vstack([sVal_lr, sVal_svm, sVal_gmm])
+    # Apply k fold cross-validation to train the fusion model (logistic regression) on the validation set with the application prior (pEmp)
+    K = 5
+    sVal_fusion_folds = [raw_scores_fusion[:, i::K] for i in range(K)]
+    LVAL_folds = [LVAL[i::K] for i in range(K)]
+
+    calibrated_sVal_fusion = np.zeros_like(raw_scores_fusion[0])
+    for k in range(K):
+        # Train the model on K-1 folds and validate on the remaining fold
+        SCAL_fusion, SVAL_fusion = np.hstack([sVal_fusion_folds[i] for i in range(K) if i != k]), sVal_fusion_folds[k]
+        LCAL, LVAL_k = np.hstack([LVAL_folds[i] for i in range(K) if i != k]), LVAL_folds[k]
+
+        l = 1e-3
+        pEmp = (LTR == 1).sum() / LTR.size
+        w_fusion, b_fusion = trainLogRegWeighted(SCAL_fusion, LCAL, l, pEmp)
+
+        calibrated_sVal_fusion[k::K] = (np.dot(w_fusion.T, SVAL_fusion) + b_fusion - np.log(pEmp / (1 - pEmp))).ravel()
+    
+    # Compute and print DCF for the fused system
+    plot_min_act_DCF_for_n_systems(scores_list=[calibrated_sVal_lr, calibrated_sVal_svm, calibrated_sVal_gmm, calibrated_sVal_fusion], LVAL=LVAL, pi=pEmp, system_names=["Logistic Regression", "SVM RBF Kernel", "GMM 8 Components", "Fused System"])
 
 if __name__ == "__main__":
 
-    if (True):
-        np.set_printoptions(precision=3, suppress=True)
-        
-        #D, L = loadData("data/trainData.txt")
-        # Plot histograms for the features of the initial dataset
-        #histsPlot(D, L, "", 6)
-        
-        # Split dataset in train and eval
-        #(DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
-        
-        #compare_effPriors_and_DCFs_for_different_applications(DTR, LTR, DVAL, LVAL)
-        
-        # --- LAB 7 ---
-        #analyze_logistic_regression_with_different_lambdas(DTR, LTR, DVAL, LVAL, "Full-Dataset - Non-Weighted")
-        
-        # Analyze Logistic Regression results with reduced dataset
-        # DTR_reduced = DTR[:, ::50]
-        # LTR_reduced = LTR[::50]
-        #analyze_logistic_regression_with_different_lambdas(DTR_reduced, LTR_reduced, DVAL, LVAL, "1/50 Dataset - Non-Weighted")
-        
-        # DTR_expanded = quadratic_expansion(DTR)
-        # DVAL_expanded = quadratic_expansion(DVAL)
-        #analyze_logistic_regression_with_different_lambdas(DTR_expanded, LTR, DVAL_expanded, LVAL, "Expanded Dataset - Non-Weighted")
-                
-        # CHECK_POINT
-        # Load calibrated_scores
-        data, error_msg = load_dictionary("calibrated_scores.spydata")
-        globals().update(data)
-        
-        D, L = loadData("data/trainData.txt")
-        # Plot histograms for the features of the initial dataset
-        #histsPlot(D, L, "", 6)
-        
-        # Split dataset in train and eval
-        (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
+    np.set_printoptions(precision=3, suppress=True)
+    
+    #D, L = loadData("data/trainData.txt")
+    # Plot histograms for the features of the initial dataset
+    #histsPlot(D, L, "", 6)
+    
+    # Split dataset in train and eval
+    #(DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
+    
+    #compare_effPriors_and_DCFs_for_different_applications(DTR, LTR, DVAL, LVAL)
+    
+    # --- LAB 7 ---
+    #analyze_logistic_regression_with_different_lambdas(DTR, LTR, DVAL, LVAL, "Full-Dataset - Non-Weighted")
+    
+    # Analyze Logistic Regression results with reduced dataset
+    # DTR_reduced = DTR[:, ::50]
+    # LTR_reduced = LTR[::50]
+    #analyze_logistic_regression_with_different_lambdas(DTR_reduced, LTR_reduced, DVAL, LVAL, "1/50 Dataset - Non-Weighted")
+    
+    # DTR_expanded = quadratic_expansion(DTR)
+    # DVAL_expanded = quadratic_expansion(DVAL)
+    #analyze_logistic_regression_with_different_lambdas(DTR_expanded, LTR, DVAL_expanded, LVAL, "Expanded Dataset - Non-Weighted")
+            
+    # CHECK_POINT
+    # Load calibrated_scores
+    data, error_msg = load_dictionary("calibrated_scores.spydata")
+    globals().update(data)
+    
+    D, L = loadData("data/trainData.txt")
+    # Plot histograms for the features of the initial dataset
+    #histsPlot(D, L, "", 6)
+    
+    # Split dataset in train and eval
+    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
 
-        # Compute score-level fusion of the three models (weighted logistic regression, SVM with RBF kernel, GMM with 8 components)
-        raw_scores_fusion = np.vstack([sVal_lr, sVal_svm, sVal_gmm])
-        # Appli k fold cross-validation to train the fusion model (logistic regression) on the validation set with the application prior (pEmp)
-        K = 5
-        sVal_fusion_folds = [raw_scores_fusion[:, i::K] for i in range(K)]
-        LVAL_folds = [LVAL[i::K] for i in range(K)]
 
-        calibrated_sVal_fusion = np.zeros_like(raw_scores_fusion[0])
-        for k in range(K):
-            # Train the model on K-1 folds and validate on the remaining fold
-            SCAL_fusion, SVAL_fusion = np.hstack([sVal_fusion_folds[i] for i in range(K) if i != k]), sVal_fusion_folds[k]
-            LCAL, LVAL_k = np.hstack([LVAL_folds[i] for i in range(K) if i != k]), LVAL_folds[k]
+    # --- Final Evaluation ---
+    # Load Evaluation data and compute scores for the three models and the fused system
+    DEVAL, LEVAL = loadData("data/evalData.txt")
+    pi = pEmp
 
-            l = 1e-3
-            pEmp = (LTR == 1).sum() / LTR.size
-            w_fusion, b_fusion = trainLogRegWeighted(SCAL_fusion, LCAL, l, pEmp)
+    print("\n--- Evaluating Models on Evaluation Set ---")
 
-            calibrated_sVal_fusion[k::K] = (np.dot(w_fusion.T, SVAL_fusion) + b_fusion - np.log(pEmp / (1 - pEmp))).ravel()
-        
-        # Compute and print DCF for the fused system
-        plot_min_act_DCF_for_n_systems(scores_list=[calibrated_sVal_lr, calibrated_sVal_svm, calibrated_sVal_gmm, calibrated_sVal_fusion], LVAL=LVAL, pi=pEmp, system_names=["Logistic Regression", "SVM RBF Kernel", "GMM 8 Components", "Fused System"])
+    # Compute evaluation scores for Logistic Regression
+    lamb = 10 ** -1.5
+    w, b = trainLogRegWeighted(DTR, LTR, lamb, pi)
+    raw_sEval_lr = np.dot(w.T, DEVAL) + b - np.log(pi / (1 - pi))     # raw eval scores
+
+    # Compute evaluation scores for SVM with RBF Kernel
+    kernelFunc = rbfKernel(math.exp(-2))
+    C = 10 ** 1.5
+    fScore = train_dual_SVM_kernel(DTR, LTR, C, kernelFunc, eps=1.0)
+    raw_sEval_svm = fScore(DEVAL)                                           # raw eval scores
+
+    # Compute evaluation scores for GMM with 8 components
+    n_components = 8
+    n_classes_binary = len(np.unique(L))
+    gmm_per_class_binary = {}
+    for c in range(n_classes_binary):
+        DTR_c = DTR[:, LTR == c]
+        gmm_per_class_binary[c] = train_GMM_LBG_EM(DTR_c, n_components)
+
+    logSPost_binary_eval = np.zeros((n_classes_binary, DEVAL.shape[1]))
+    for c in range(n_classes_binary):
+        logSPost_binary_eval[c, :] = logpdf_GMM(DEVAL, gmm_per_class_binary[c]) + np.log(1/n_classes_binary)
+    raw_sEval_gmm = logSPost_binary_eval[1, :] - logSPost_binary_eval[0, :] # raw eval scores
+
+    # Train calibration models on whole DVAL raw scores
+    l = 1e-3
+    pEmp = (LTR == 1).sum() / LTR.size
+    w_cal_lr, b_cal_lr = trainLogRegWeighted(vrow(sVal_lr), LVAL, l, pEmp)
+    w_cal_svm, b_cal_svm = trainLogRegWeighted(vrow(sVal_svm), LVAL, l, pEmp)
+    w_cal_gmm, b_cal_gmm = trainLogRegWeighted(vrow(sVal_gmm), LVAL, l, pEmp)
+
+    raw_scores_fusion = np.vstack([sVal_lr, sVal_svm, sVal_gmm])
+    w_cal_fusion, b_cal_fusion = trainLogRegWeighted(raw_scores_fusion, LVAL, l, pEmp)
+
+    # Compute calibrated evaluation scores
+    cal_sEval_lr = (np.dot(w_cal_lr.T, vrow(raw_sEval_lr)) + b_cal_lr - np.log(pi / (1 - pi))).ravel()
+    cal_sEval_svm = (np.dot(w_cal_svm.T, vrow(raw_sEval_svm)) + b_cal_svm - np.log(pi / (1 - pi))).ravel()
+    cal_sEval_gmm = (np.dot(w_cal_gmm.T, vrow(raw_sEval_gmm)) + b_cal_gmm - np.log(pi / (1 - pi))).ravel()
+    raw_sEval_fusion = np.vstack([raw_sEval_lr, raw_sEval_svm, raw_sEval_gmm])
+    cal_sEval_fusion = (np.dot(w_cal_fusion.T, raw_sEval_fusion) + b_cal_fusion - np.log(pi / (1 - pi))).ravel()
+
+    # Plot DCFs for the three models and the fused system on the evaluation set
+    plot_min_act_DCF_for_n_systems(scores_list=[cal_sEval_lr, cal_sEval_svm, cal_sEval_gmm, cal_sEval_fusion], LVAL=LEVAL, pi=pi, system_names=["Logistic Regression", "SVM RBF Kernel", "GMM 8 Components", "Fused System"])
