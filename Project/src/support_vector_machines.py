@@ -36,7 +36,7 @@ def train_dual_SVM_linear(DTR, LTR, C, K):
 def train_dual_SVM_kernel(DTR, LTR, C, kernelFunc, eps = 1.0):
     ZTR = LTR * 2.0 - 1.0 # Convert labels to -1/+1
     K = kernelFunc(DTR, DTR) + eps # Replace DTR dot product with Kernel Function
-    H = vcol(ZTR) * vrow(ZTR) * K
+    H = np.outer(ZTR, ZTR) * K
     
     # Dual objective and gradient
     def fOpt(alpha):

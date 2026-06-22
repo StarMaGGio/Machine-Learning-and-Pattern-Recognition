@@ -35,11 +35,14 @@ def split_db_2to1(D, L, seed = 0):
     
     return (DTR, LTR), (DVAL, LVAL)
 
+def computeMean(D):
+    return D.mean(1).reshape((D.shape[0], 1))
+
 def computeCovariance(D):
-    mu = D.mean(1).reshape((D.shape[0], 1))
+    mu = computeMean(D)
     DC = D - mu
     C = DC @ DC.T / float(D.shape[1])
-    return C, mu
+    return C
 
 def computeCorrelationMatrix(C):
     C / ( vcol(C.diagonal()**0.5) * vrow(C.diagonal()**0.5 ))

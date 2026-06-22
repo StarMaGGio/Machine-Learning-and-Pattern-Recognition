@@ -1,13 +1,14 @@
-# -*- coding: utf-8 -*-
 from src.gaussian_mixture_models import logpdf_GMM, train_GMM_LBG_EM
+# pyrefly: ignore [missing-import]
 import numpy as np
 import math
+# pyrefly: ignore [missing-import]
 import matplotlib.pyplot as plt
 from src.utils import loadData, split_db_2to1, computeCovariance, vrow, vcol, computeCorrelationMatrix, compute_confusion_matrix, quadratic_expansion, polyKernel, rbfKernel
 from src.visualization import histsPlot, plot_distribution_density, plot_Bayes_error
 from src.dimensionality_reduction import trainPCAmodel, trainLDAmodel
-from src.ML_estimate_for_Gaussian import logpdf_GAU_ND
-from src.gaussian_models import compute_llr_for_classification, compute_predictions_with_llr, compute_error_rate, compute_llr_MVG, compute_llr_Tied_Gaussian, compute_llr_Naive_Bayes_Gaussian
+from src.multivariate_gaussian_log_pdf import logpdf_GAU_ND
+from src.gaussian_models import compute_llr_for_classification, compute_predictions_with_llr, compute_error_rate
 from src.bayes_decisions_model import compute_optimal_bayes_decisions, compute_normalized_DCF, compute_normalized_minDCF
 from src.logistic_regression import trainLogReg, trainLogRegWeighted
 from src.support_vector_machines import train_dual_SVM_linear, train_dual_SVM_kernel
@@ -736,6 +737,19 @@ def analyze_score_level_fusion_impact():
     plot_min_act_DCF_for_n_systems(scores_list=[calibrated_sVal_lr, calibrated_sVal_svm, calibrated_sVal_gmm, calibrated_sVal_fusion], LVAL=LVAL, pi=pEmp, system_names=["Logistic Regression", "SVM RBF Kernel", "GMM 8 Components", "Fused System"])
 
 if __name__ == "__main__":
+    np.set_printoptions(precision=3, suppress=True)
+    
+    D, L = loadData("data/trainData.txt")
+    # Plot histograms for the features of the initial dataset
+    #histsPlot(D, L, "", 6)
+    
+    # Split dataset in train and eval
+    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
+    
+    analyze_SVM_with_different_kernels(DTR, LTR, DVAL, LVAL)
+    
+
+if __name__ == "__ciao__":
 
     np.set_printoptions(precision=3, suppress=True)
     
