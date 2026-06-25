@@ -288,9 +288,3 @@ def compute_predictions_with_llr(llr, size, t):
     PVAL[llr >= t] = 1
     
     return PVAL
-
-# TODO: Move in evaluation_metrics file
-def compute_error_rate(PVAL, LVAL):
-    n_correct_predictions = np.array([PVAL == LVAL]).sum()
-    acc = n_correct_predictions / PVAL.shape[0]
-    return 1 - acc
