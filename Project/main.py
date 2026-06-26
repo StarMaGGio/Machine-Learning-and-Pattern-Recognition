@@ -4,13 +4,13 @@ import math
 # pyrefly: ignore [missing-import]
 import matplotlib.pyplot as plt
 
-from src.dimensionality_reduction import PrincipalComponentAnalysis, LinearDiscriminantAnalysis
 from src.utils import loadData, split_db_2to1
 from src.evaluation import compute_acc_err
 from src.visualization import histsPlot, plot_distribution_density, plot_Bayes_error
+from src.dimensionality_reduction import PrincipalComponentAnalysis, LinearDiscriminantAnalysis
+from src.gaussian_models import MultivariateGaussianClassifier, NaiveBayesGaussianClassifier, TiedGaussianClassifier
 
 from src.multivariate_gaussian_log_pdf import logpdf_GAU_ND
-from src.gaussian_models import compute_llr_for_classification, compute_predictions_with_llr
 from src.bayes_decisions_model import compute_optimal_bayes_decisions, compute_normalized_DCF, compute_normalized_minDCF
 from src.logistic_regression import trainLogReg, trainLogRegWeighted
 from src.support_vector_machines import train_dual_SVM_linear, train_dual_SVM_kernel
@@ -26,7 +26,7 @@ def PCA_LDA_effects_and_classification_analysis(D, L):
                                     2. Analyze effects of LDA on features\n\
                                     3. Apply LDA for classification\n\
                                     4. Apply PCA + LDA for classification\n\
-                                    5. Back\n'))
+                                    0. Back\n'))
 
     match inner_menu_option:
         case 1:
@@ -102,154 +102,62 @@ def PCA_LDA_effects_and_classification_analysis(D, L):
             # Compute PCA + LDA prediction error rate
             acc, err = compute_acc_err(PVAL, LVAL)
             print(f"PCA + LDA error rate: {err:.5f}")
-        case 5:
+        case 0:
             return
     
-# ---------------------------------------------
-#  Compare MVG vs Tied Gaussian vs Naive Bayes
-# ---------------------------------------------
-def compare_gaussian_models(DTR, LTR, DVAL, LVAL):
-    DTR0 = DTR[:, LTR == 0]
-    DTR1 = DTR[:, LTR == 1]
-    
-    # --- MVG ---
-    # Compute ML estimates for model parameters (mu, C)
-    C0, mu0 = computeCovariance(DTR0)
-    C1, mu1 = computeCovariance(DTR1)
-    
-    # Compute LLRs
-    LLRs = compute_llr_for_classification(DVAL, mu0, mu1, C0, C1)
-    
-    # Compute predictions
-    PVAL = compute_predictions_with_llr(LLRs, DVAL.shape[1], 0)
-    
-    # Compute error rate
-    err = compute_error_rate(PVAL, LVAL)
-    print("MVG error rate: ", err)
-    
-    # --- Naive Bayes Gaussian ---
-    # Compute ML estimates for model parameters (mu, Ct)
-    Ct0 = C0 * np.identity(C0.shape[1])
-    Ct1 = C1 * np.identity(C1.shape[1])
-    
-    # Compute LLRs
-    LLRs = compute_llr_for_classification(DVAL, mu0, mu1, Ct0, Ct1)
-    
-    # Compute predictions
-    PVAL = compute_predictions_with_llr(LLRs, DVAL.shape[1], 0)
-    
-    # Compute error rate
-    err = compute_error_rate(PVAL, LVAL)
-    print("Naive Bayes Gaussian error rate: ", err)
-    
-    # --- Tied Gaussian ---
-    # Compute ML estimates for model parameters (mu, Sw)
-    Sw = ((C0*DTR0.shape[1])+(C1*DTR1.shape[1]))/float(DTR.shape[1])
-    
-    # Compute LLRs
-    LLRs = compute_llr_for_classification(DVAL, mu0, mu1, Sw, Sw)
-    
-    # Compute predictions
-    PVAL = compute_predictions_with_llr(LLRs, DVAL.shape[1], 0)
-    
-    # Compute error rate
-    err = compute_error_rate(PVAL, LVAL)
-    print("Tied Gaussian error rate: ", err)
-    
-def compare_gaussian_models_with_different_features(DTR, LTR, DVAL, LVAL):
-    # Try gaussian models with all the features
-    compare_gaussian_models(DTR, LTR, DVAL, LVAL)
-    
-    #  Analize results in light of features characteristics
-    # Print Covariance Matrices
-    print()
-    #print("Covariance Matrix (Class 0): ", computeCovariance(D[:, L==0])[0])
-    #print("Covariance Matrix (Class 1): ", computeCovariance(D[:, L==1])[0])
-    
-    # Compute Correlation Matrices
-    Corr0 = computeCorrelationMatrix(computeCovariance(D[:, L==0])[0])
-    Corr1 = computeCorrelationMatrix(computeCovariance(D[:, L==1])[0])
-    
-    # Plot distribution densities of all the features
-    #plot_distribution_density(D, L)
-    
-    # Try gaussian models with only features 1 to 4
-    D_f1_4 = D[:4, :]
-    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D_f1_4, L)
-    #compare_gaussian_models(DTR, LTR, DVAL, LVAL)
-    print()
-    
-    # Try again with only features 1-2 (similar mean, different variance)
-    D_f1_2 = D[:2, :]
-    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D_f1_2, L)
-    #compare_gaussian_models(DTR, LTR, DVAL, LVAL)
-    print()
-    
-    # Try again with only features 3-4 (different mean, similar variance)
-    D_f3_4 = D[2:4, :]
-    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D_f3_4, L)
-    #compare_gaussian_models(DTR, LTR, DVAL, LVAL)
-    print()
-    
-    
-    # Try again by reprocessing with PCA
-    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
-    m = 4
-    # Estimate PCA on initial DTR
-    P = trainPCAmodel(DTR, m)
-    # Apply PCA on DTR and DVAL
-    DTR_pca = np.dot(P.T, DTR)
-    DVAL_pca = np.dot(P.T, DVAL)
-    histsPlot(DTR_pca, LTR, "", 4)
-    compare_gaussian_models(DTR_pca, LTR, DVAL_pca, LVAL)# ----- LAB 5 -----
-    # Try gaussian models with all the features
-    compare_gaussian_models(DTR, LTR, DVAL, LVAL)
-    
-    #  Analize results in light of features characteristics
-    # Print Covariance Matrices
-    print()
-    #print("Covariance Matrix (Class 0): ", computeCovariance(D[:, L==0])[0])
-    #print("Covariance Matrix (Class 1): ", computeCovariance(D[:, L==1])[0])
-    
-    # Compute Correlation Matrices
-    Corr0 = computeCorrelationMatrix(computeCovariance(D[:, L==0])[0])
-    Corr1 = computeCorrelationMatrix(computeCovariance(D[:, L==1])[0])
-    
-    # Plot distribution densities of all the features
-    #plot_distribution_density(D, L)
-    
-    # Try gaussian models with only features 1 to 4
-    D_f1_4 = D[:4, :]
-    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D_f1_4, L)
-    #compare_gaussian_models(DTR, LTR, DVAL, LVAL)
-    print()
-    
-    # Try again with only features 1-2 (similar mean, different variance)
-    D_f1_2 = D[:2, :]
-    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D_f1_2, L)
-    #compare_gaussian_models(DTR, LTR, DVAL, LVAL)
-    print()
-    
-    # Try again with only features 3-4 (different mean, similar variance)
-    D_f3_4 = D[2:4, :]
-    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D_f3_4, L)
-    #compare_gaussian_models(DTR, LTR, DVAL, LVAL)
-    print()
-    
-    
-    # Try again by reprocessing with PCA
-    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
-    m = 4
-    # Estimate PCA on initial DTR
-    P = trainPCAmodel(DTR, m)
-    # Apply PCA on DTR and DVAL
-    DTR_pca = np.dot(P.T, DTR)
-    DVAL_pca = np.dot(P.T, DVAL)
-    histsPlot(DTR_pca, LTR, "", 4)
-    compare_gaussian_models(DTR_pca, LTR, DVAL_pca, LVAL)
+# ----------------------------
+#  Generative Gaussian Models
+# ----------------------------
+def compare_gaussian_models(D, L):
+
+    inner_menu_option = int(input('\n Generative Gaussian Models Menu:\n\
+                                    1. Multivariate Gaussian Classifier\n\
+                                    2. Naive Bayes Gaussian Classifier\n\
+                                    3. Tied Gaussian Classifier\n\
+                                    0. Back\n'))
+
+    first_feature, last_feature = int(input("\nFeatures range to consider (from 1 to 6): "))-1, int(input("to "))
+    D_sel = D[first_feature:last_feature, :]
+    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D_sel, L)
+
+    pca_selection = int(input("\nPreprocessing with PCA? (1 for yes, 0 for no): "))
+    match pca_selection:
+        case 1:
+            m = int(input("\nNumber of PCA directions: "))
+            PCA = PrincipalComponentAnalysis()
+            PCA.train(DTR, m)
+            DTR = PCA.apply(DTR)
+            DVAL = PCA.apply(DVAL)
+        case 0:
+            pass
+
+    match inner_menu_option:
+        case 1:
+            # --- MVG ---
+            MVG = MultivariateGaussianClassifier()
+            MVG.train(DTR, LTR)
+            PVAL = MVG.predict_binary(DVAL)
+            acc, err = compute_acc_err(PVAL, LVAL)
+            print(f"MVG error rate - features {first_feature+1} to {last_feature}: {err:.5f}")
+        case 2:
+            # --- Naive Bayes Gaussian ---
+            NBG = NaiveBayesGaussianClassifier()
+            NBG.train(DTR, LTR)
+            PVAL = NBG.predict_binary(DVAL)
+            acc, err = compute_acc_err(PVAL, LVAL)
+            print(f"Naive Bayes Gaussian error rate - features {first_feature+1} to {last_feature}: {err:.5f}")
+        case 3:
+            # --- Tied Gaussian ---
+            TG = TiedGaussianClassifier()
+            TG.train(DTR, LTR)
+            PVAL = TG.predict_binary(DVAL)
+            acc, err = compute_acc_err(PVAL, LVAL)
+            print(f"Tied Gaussian error rate - features {first_feature+1} to {last_feature}: {err:.5f}")
+        case 0:
+            return
 
 # -----------------------
-#  Evaluation/Bayes Risk
+#  TODO: Evaluation/Bayes Risk
 # -----------------------
 def compare_effPriors_and_DCFs_for_different_applications(DTR, LTR, DVAL, LVAL):
     # Define 5 different applications
@@ -290,7 +198,7 @@ def compare_effPriors_and_DCFs_for_different_applications(DTR, LTR, DVAL, LVAL):
         plot_Bayes_error(evalset_llr_binary, LVAL, model)
 
 # ---------------------
-#  Logistic Regression
+#  TODO: Logistic Regression
 # ---------------------
 def analyze_logistic_regression_with_different_lambdas(DTR, LTR, DVAL, LVAL, title):
     actDCFs = []
@@ -376,7 +284,7 @@ def analyze_weighted_logistic_regression_with_different_lambdas(DTR, LTR, DVAL, 
     plt.show()
 
 # ------------------------
-# Support Vector Machines
+# TODO: Support Vector Machines
 # ------------------------
 def analyze_SVM_with_different_kernels(DTR, LTR, DVAL, LVAL):
     DTR_reduced = DTR#[:, ::50]
@@ -490,7 +398,7 @@ def analyze_SVM_with_different_kernels(DTR, LTR, DVAL, LVAL):
     plt.show()
     
 # ------------------------
-# Gaussian Mixture Models
+# TODO: Gaussian Mixture Models
 # ------------------------
 def analyze_GMM_with_different_components(DTR, LTR, DVAL, LVAL):
     n_classes_binary = len(np.unique(L))
@@ -604,7 +512,7 @@ def plot_min_act_DCF_for_n_systems(scores_list, LVAL, pi, system_names):
     plt.show()
 
 # ------------------------------
-# Scores Calibration and Fusion
+# TODO: Scores Calibration and Fusion
 # ------------------------------
 def analyze_k_fold_calibration_impact():
     # --- LAB 9 ---
@@ -848,16 +756,17 @@ if __name__ == "__main__":
 
     np.set_printoptions(precision=3, suppress=True)
     D, L = loadData("data/trainData.txt")
-    # Plot histograms for the features of the initial dataset
-    #histsPlot(D, L, "", 6)
     
     while True:
-        menu_option = int(input("Menu\n\
-                                1. Dimensionality Reduction\n\
-                                0. Exit\n"))
+        menu_option = int(input("\nMenu\n\
+                                    1. Dimensionality Reduction\n\
+                                    2. Generative Gaussian Models\n\
+                                    0. Exit\n"))
 
         match menu_option:
             case 1:
                 PCA_LDA_effects_and_classification_analysis(D, L)
+            case 2:
+                compare_gaussian_models(D, L)
             case 0:
                 break
