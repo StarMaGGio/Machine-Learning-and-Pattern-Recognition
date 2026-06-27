@@ -56,6 +56,10 @@ def compute_confusion_matrix(predictions, true_labels):
         
     return conf_matrix
 
+def compute_effective_prior(pi, Cfn, Cfp):
+    effPrior = (pi*Cfn)/((pi*Cfn)+(1-pi)*Cfp)
+    return effPrior
+
 def quadratic_expansion(X):
     xxT_all = X[:, None, :] * X[None, :, :]
     vec_xxT_all = xxT_all.reshape(-1, X.shape[1])

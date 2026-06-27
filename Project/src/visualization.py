@@ -1,9 +1,10 @@
-# -*- coding: utf-8 -*-
+# pyrefly: ignore [missing-import]
 import matplotlib.pyplot as plt
+# pyrefly: ignore [missing-import]
 import numpy as np
 from src.utils import computeCovariance, vrow, compute_confusion_matrix
-from src.ML_estimate_for_Gaussian import logpdf_GAU_ND
-from src.bayes_decisions_model import compute_normalized_DCF, compute_normalized_minDCF
+from src.gaussian_models import compute_predictions_with_llr
+from src.bayes_decisions_model import compute_actual_DCF, compute_minimum_DCF
 
 def histsPlot(D, L, title, nDimensions = 6):
     hFea = {
@@ -73,33 +74,40 @@ def plot_distribution_density(D, L):
             plt.title(f"Gaussian Distribution of Feature {i+1} - Class {c}")
             plt.show()
             
-def plot_Bayes_error(evalset_llr_binary, evalset_labels_binary, model):
+def plot_Bayes_error(LLRs, LVAL, model_name):
+    """
+    Function to plot Bayes error for a given model
+    
+    Args:
+        LLRs (np.ndarray): Log-likelihood ratios
+        LVAL (np.ndarray): True labels
+        model_name (str): Name of the model
+    """
     effPriorLogOdds = np.linspace(-4, 4, 21)
     dcf = []
     mindcf = []
-    predicted_labels_binary = np.zeros(evalset_labels_binary.shape[0], dtype=np.int32)
     
+    # For each prior log-odds, compute actual DCF and minimum DCF
     for p in effPriorLogOdds:
         effPrior = 1/(1+np.exp(-p))
         
-        t = -p
-        predicted_labels_binary[evalset_llr_binary > t] = 1
-        predicted_labels_binary[evalset_llr_binary <= t] = 0
+        PVAL = compute_predictions_with_llr(LLRs, t=-p)
         
-        conf_matr = compute_confusion_matrix(predicted_labels_binary, evalset_labels_binary)
+        conf_matr = compute_confusion_matrix(PVAL, LVAL)
         
-        DCF = compute_normalized_DCF(effPrior, 1, 1, conf_matr)
+        DCF = compute_actual_DCF(effPrior, 1, 1, conf_matr)
         dcf.append(DCF)
         
-        minDCF = compute_normalized_minDCF(evalset_llr_binary, evalset_labels_binary, effPrior, 1, 1)
+        minDCF = compute_minimum_DCF(LLRs, LVAL, effPrior, 1, 1)
         mindcf.append(minDCF)
         
+    # Plot actual DCF and minimum DCF
     plt.figure()
     plt.plot(effPriorLogOdds, dcf, label="DCF", color='r')
     plt.plot(effPriorLogOdds, mindcf, label='min DCF', color='b')
     plt.ylim([0, 1.1])
     plt.xlim([-4, 4])
-    plt.title(f"Bayes error plots for {model}")
+    plt.title(f"Bayes error plots for {model_name}")
     plt.ylabel("DCF value")
     plt.xlabel("prior log-odds")
     plt.show()

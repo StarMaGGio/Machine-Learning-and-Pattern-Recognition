@@ -114,6 +114,9 @@ class MultivariateGaussianClassifier:
 
         return PVAL
 
+    def get_log_likelihood_ratios(self, X):
+        return compute_llr_for_classification(X, self.means[0], self.means[1], self.covariances[0], self.covariances[1])
+
     def predict_binary(self, X, t=0):
         """
         Function to compute the optimal Bayes decision rule for a binary Gaussian model.
@@ -135,7 +138,7 @@ class MultivariateGaussianClassifier:
         LLRs = compute_llr_for_classification(X, self.means[0], self.means[1], self.covariances[0], self.covariances[1])
         
         # Compute predictions
-        PVAL = compute_predictions_with_llr(LLRs, X.shape[1], t)
+        PVAL = compute_predictions_with_llr(LLRs, t)
         
 class TiedGaussianClassifier(MultivariateGaussianClassifier):
     def __init__(self):
@@ -175,6 +178,9 @@ class TiedGaussianClassifier(MultivariateGaussianClassifier):
         # Compute Sw
         self.Sw = ((self.covariances[0]*X[:, L==0].shape[1])+(self.covariances[1]*X[:, L==1].shape[1]))/float(X.shape[1])
     
+    def get_log_likelihood_ratios(self, X):
+        return compute_llr_for_classification(X, self.means[0], self.means[1], self.Sw, self.Sw)
+
     def predict_binary(self, X, t=0):
         """
         Function to compute the optimal Bayes decision rule for a binary Gaussian model.
@@ -196,7 +202,7 @@ class TiedGaussianClassifier(MultivariateGaussianClassifier):
         LLRs = compute_llr_for_classification(X, self.means[0], self.means[1], self.Sw, self.Sw)
         
         # Compute predictions
-        PVAL = compute_predictions_with_llr(LLRs, X.shape[1], t)
+        PVAL = compute_predictions_with_llr(LLRs, t)
 
         return PVAL
 
@@ -235,6 +241,9 @@ class NaiveBayesGaussianClassifier(MultivariateGaussianClassifier):
             C_diag = C_c * np.identity(C_c.shape[1])
             self.covariances[c] = C_diag
 
+    def get_log_likelihood_ratios(self, X):
+        return super().get_log_likelihood_ratios(X)
+
     def predict_binary(self, X, t=0):
         return super().predict_binary(X, t)
 
@@ -263,17 +272,15 @@ def compute_llr_for_classification(X, mu0, mu1, C0, C1):
     """
     return logpdf_GAU_ND(X, mu1, C1) - logpdf_GAU_ND(X, mu0, C0)
 
-def compute_predictions_with_llr(llr, size, t):
+def compute_predictions_with_llr(llr, t):
     """
     Function to compute predictions from log-likelihood ratios.
-    Compa
+    Compare LLRs with a threshold t and return predictions.
 
     Parameters
     ----------
     llr : (numpy.ndarray)
         Log-likelihood ratios of shape (n_samples,).
-    size : (int)
-        Number of samples.
     t : (float)
         Decision threshold.
 
@@ -283,8 +290,8 @@ def compute_predictions_with_llr(llr, size, t):
         Predictions of shape (n_samples,).
 
     """
-    PVAL = np.zeros(size, np.int32)
-    PVAL[llr < t] = 0
+    PVAL = np.zeros(llr.shape[1], dtype=np.int32)
     PVAL[llr >= t] = 1
+    PVAL[llr < t] = 0
     
     return PVAL

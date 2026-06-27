@@ -1,17 +1,17 @@
 # pyrefly: ignore [missing-import]
+from Project.src import bayes_decisions_model
 import numpy as np
 import math
 # pyrefly: ignore [missing-import]
 import matplotlib.pyplot as plt
 
-from src.utils import loadData, split_db_2to1
+from src.utils import loadData, split_db_2to1, compute_effective_prior, compute_confusion_matrix
 from src.evaluation import compute_acc_err
-from src.visualization import histsPlot, plot_distribution_density, plot_Bayes_error
+from src.visualization import histsPlot, plot_Bayes_error
 from src.dimensionality_reduction import PrincipalComponentAnalysis, LinearDiscriminantAnalysis
 from src.gaussian_models import MultivariateGaussianClassifier, NaiveBayesGaussianClassifier, TiedGaussianClassifier
 
-from src.multivariate_gaussian_log_pdf import logpdf_GAU_ND
-from src.bayes_decisions_model import compute_optimal_bayes_decisions, compute_normalized_DCF, compute_normalized_minDCF
+from src.bayes_decisions_model import compute_optimal_bayes_decisions, compute_actual_DCF, compute_minimum_DCF
 from src.logistic_regression import trainLogReg, trainLogRegWeighted
 from src.support_vector_machines import train_dual_SVM_linear, train_dual_SVM_kernel
 from src.gaussian_mixture_models import logpdf_GMM, train_GMM_LBG_EM
@@ -27,6 +27,8 @@ def PCA_LDA_effects_and_classification_analysis(D, L):
                                     3. Apply LDA for classification\n\
                                     4. Apply PCA + LDA for classification\n\
                                     0. Back\n'))
+
+    if inner_menu_option == 0: return
 
     match inner_menu_option:
         case 1:
@@ -102,8 +104,6 @@ def PCA_LDA_effects_and_classification_analysis(D, L):
             # Compute PCA + LDA prediction error rate
             acc, err = compute_acc_err(PVAL, LVAL)
             print(f"PCA + LDA error rate: {err:.5f}")
-        case 0:
-            return
     
 # ----------------------------
 #  Generative Gaussian Models
@@ -115,6 +115,8 @@ def compare_gaussian_models(D, L):
                                     2. Naive Bayes Gaussian Classifier\n\
                                     3. Tied Gaussian Classifier\n\
                                     0. Back\n'))
+
+    if inner_menu_option == 0: return
 
     first_feature, last_feature = int(input("\nFeatures range to consider (from 1 to 6): "))-1, int(input("to "))
     D_sel = D[first_feature:last_feature, :]
@@ -153,50 +155,77 @@ def compare_gaussian_models(D, L):
             PVAL = TG.predict_binary(DVAL)
             acc, err = compute_acc_err(PVAL, LVAL)
             print(f"Tied Gaussian error rate - features {first_feature+1} to {last_feature}: {err:.5f}")
-        case 0:
-            return
 
 # -----------------------
-#  TODO: Evaluation/Bayes Risk
+#  Evaluation/Bayes Risk
 # -----------------------
 def compare_effPriors_and_DCFs_for_different_applications(DTR, LTR, DVAL, LVAL):
-    # Define 5 different applications
-    applications = [(0.5, 1.0, 1.0), # uniform prior and costs
-                    (0.9, 1.0, 1.0), # prior probability of Genuine sample is higher
-                    (0.1, 1.0, 1.0), # prior probability of Fake sample is higher
-                    (0.5, 1.0, 9.0), # prior is uniform and cost of accepting fake image is larger
-                    (0.5, 9.0, 1.0)] # prior is uniform and cost of rejecting legit image is larger
-    
-    # Compute effective priors for each application
-    effective_priors = []
-    for pi, Cfn, Cfp in applications:
-        effPrior = (pi*Cfn)/((pi*Cfn)+(1-pi)*Cfp)
-        effective_priors.append(effPrior)
-        print(f"Application (pi={pi}, Cfn={Cfn}, Cfp={Cfp}) -> Effective Prior: {effPrior:.2f}")
-        print()
-    
-    # Compute optimal Bayes decisions for the validation set for MVG models and its variants
-    gaussian_models = ["MVG", "Tied Gaussian", "Naive Bayes Gaussian"]
-    effective_priors = np.unique(effective_priors)
-    for model in gaussian_models:
-        print()
-        print("Model: ", model)
-        
-        evalset_llr_binary = []
-        if model == "MVG": evalset_llr_binary = compute_llr_MVG(DTR, LTR, DVAL)
-        elif model == "Tied Gaussian": evalset_llr_binary = compute_llr_Tied_Gaussian(DTR, LTR, DVAL)
-        elif model == "Naive Bayes Gaussian": evalset_llr_binary = compute_llr_Naive_Bayes_Gaussian(DTR, LTR, DVAL)
-        
-        for effPrior in effective_priors:
-            PVAL = compute_optimal_bayes_decisions(effPrior, evalset_llr_binary, LVAL)
-            DCF = compute_normalized_DCF(effPrior, 1, 1, compute_confusion_matrix(PVAL, LVAL))
-            min_DCF = compute_normalized_minDCF(evalset_llr_binary, LVAL, effPrior, 1, 1)
-            loss = DCF - min_DCF
-            percent_loss = loss / min_DCF * 100
-            print(f"effPrior={effPrior}: norm_DCF={DCF:.3f}, min_DCF={min_DCF:.3f}, percent_loss={percent_loss:.3f}")
-            
-        plot_Bayes_error(evalset_llr_binary, LVAL, model)
 
+    inner_menu_option = int(input('\n Choose a model to evaluate:\n\
+                                    1. MVG\n\
+                                    2. Tied Gaussian\n\
+                                    3. Naive Bayes Gaussian\n\
+                                    4. Bayes Error Plot\n\
+                                    0. Back\n'))
+    model = ""
+
+    if inner_menu_option == 0: return
+
+    if inner_menu_option != 4:
+        pi = float(input("Prior probability of genuine sample: "))
+        Cfn = float(input("Cost of false negative: "))
+        Cfp = float(input("Cost of false positive: "))
+        
+        # Compute effective prior
+        eff_prior = compute_effective_prior(pi, Cfn, Cfp)
+        print(f"Application (pi={pi}, Cfn={Cfn}, Cfp={Cfp}) -> Effective Prior: {eff_prior:.2f}")
+        t = np.log((1-eff_prior)/eff_prior)
+
+    # Compute optimal Bayes decisions on the validation set for the selected model
+    match inner_menu_option:
+        case 1:
+            model = "MVG"
+            MVG = MultivariateGaussianClassifier()
+            MVG.train(DTR, LTR)
+            PVAL = MVG.predict_binary(DVAL, t)
+        case 2:
+            model = "Tied Gaussian"
+            TG = TiedGaussianClassifier()
+            TG.train(DTR, LTR)
+            PVAL = TG.predict_binary(DVAL, t)
+        case 3:
+            model = "Naive Bayes Gaussian"
+            NBG = NaiveBayesGaussianClassifier()
+            NBG.train(DTR, LTR)
+            PVAL = NBG.predict_binary(DVAL, t)
+        case 4:
+            LLRs = np.zeros(shape=LVAL.shape)
+            select_model = int(input("Select model: 1. MVG, 2. Tied Gaussian, 3. Naive Bayes Gaussian"))
+            if select_model == 1:
+                model = "MVG"
+                MVG = MultivariateGaussianClassifier()
+                MVG.train(DTR, LTR)
+                LLRs = MVG.get_log_likelihood_ratios(DVAL)
+            elif select_model == 2:
+                model = "Tied Gaussian"
+                TG = TiedGaussianClassifier()
+                TG.train(DTR, LTR)
+                LLRs = TG.get_log_likelihood_ratios(DVAL)
+            elif select_model == 3:
+                model = "Naive Bayes Gaussian"
+                NBG = NaiveBayesGaussianClassifier()
+                NBG.train(DTR, LTR)
+                LLRs = NBG.get_log_likelihood_ratios(DVAL)
+            plot_Bayes_error(LLRs, LVAL, model)
+            return
+
+    # Compute minDCF and actDCF
+    min_DCF = compute_minimum_DCF(DVAL, LVAL, eff_prior)
+    act_DCF = compute_actual_DCF(eff_prior, compute_confusion_matrix(PVAL, LVAL))
+    loss = act_DCF - min_DCF
+    percent_loss = loss / min_DCF * 100
+    print(f"effPrior={eff_prior}: act_DCF={act_DCF:.3f}, min_DCF={min_DCF:.3f}, percent_loss={percent_loss:.3f}")
+    
 # ---------------------
 #  TODO: Logistic Regression
 # ---------------------
@@ -223,10 +252,10 @@ def analyze_logistic_regression_with_different_lambdas(DTR, LTR, DVAL, LVAL, tit
         PVALllr[sValLLr > 0] = 1
         PVALllr[sValLLr < 0] = 0
         conf_matr = compute_confusion_matrix(PVALllr, LVAL)
-        minDCF = compute_normalized_minDCF(sValLLr, LVAL, pi, 1.0, 1.0)
+        minDCF = compute_minimum_DCF(sValLLr, LVAL, pi, 1.0, 1.0)
         minDCFs.append(minDCF)
         print('minDCF: %.4f' % minDCF)
-        actDCF = compute_normalized_DCF(pi, 1.0, 1.0, conf_matr)
+        actDCF = compute_actual_DCF(pi, 1.0, 1.0, conf_matr)
         actDCFs.append(actDCF)
         print('actDCF: %.4f' % actDCF)
     
@@ -265,10 +294,10 @@ def analyze_weighted_logistic_regression_with_different_lambdas(DTR, LTR, DVAL, 
         PVALllr[sValLLr < 0] = 0
         conf_matr = compute_confusion_matrix(PVALllr, LVAL)
         pi = 0.1
-        minDCF = compute_normalized_minDCF(sValLLr, LVAL, pi, 1.0, 1.0)
+        minDCF = compute_minimum_DCF(sValLLr, LVAL, pi, 1.0, 1.0)
         minDCFs.append(minDCF)
         print('minDCF: %.4f' % minDCF)
-        actDCF = compute_normalized_DCF(pi, 1.0, 1.0, conf_matr)
+        actDCF = compute_actual_DCF(pi, 1.0, 1.0, conf_matr)
         actDCFs.append(actDCF)
         print('actDCF: %.4f' % actDCF)
     
@@ -303,8 +332,8 @@ def analyze_SVM_with_different_kernels(DTR, LTR, DVAL, LVAL):
         PVAL = (SVAL > 0) * 1                           # Compute predictions
         err = (PVAL != LVAL_reduced).sum() / float(LVAL_reduced.size)   # Copute predictions error
         print('Error rate: %.1f' % (err*100))
-        minDCFs.append(compute_normalized_minDCF(SVAL, LVAL_reduced, 0.1, 1.0, 1.0))
-        actDCFs.append(compute_normalized_DCF(0.1, 1.0, 1.0, compute_confusion_matrix(PVAL, LVAL_reduced)))
+        minDCFs.append(compute_minimum_DCF(SVAL, LVAL_reduced, 0.1, 1.0, 1.0))
+        actDCFs.append(compute_actual_DCF(0.1, 1.0, 1.0, compute_confusion_matrix(PVAL, LVAL_reduced)))
     plt.figure()
     plt.plot(Cs, minDCFs, label="minDCF", color='r')
     plt.plot(Cs, actDCFs, label="actDCF", color='b')
@@ -328,8 +357,8 @@ def analyze_SVM_with_different_kernels(DTR, LTR, DVAL, LVAL):
         PVAL = (SVAL > 0) * 1                           # Compute predictions
         err = (PVAL != LVAL_reduced).sum() / float(LVAL_reduced.size)   # Copute predictions error
         print('Error rate: %.1f' % (err*100))
-        minDCFs.append(compute_normalized_minDCF(SVAL, LVAL_reduced, 0.1, 1.0, 1.0))
-        actDCFs.append(compute_normalized_DCF(0.1, 1.0, 1.0, compute_confusion_matrix(PVAL, LVAL_reduced)))
+        minDCFs.append(compute_minimum_DCF(SVAL, LVAL_reduced, 0.1, 1.0, 1.0))
+        actDCFs.append(compute_actual_DCF(0.1, 1.0, 1.0, compute_confusion_matrix(PVAL, LVAL_reduced)))
     plt.figure()
     plt.plot(Cs, minDCFs, label="minDCF", color='r')
     plt.plot(Cs, actDCFs, label="actDCF", color='b')
@@ -352,8 +381,8 @@ def analyze_SVM_with_different_kernels(DTR, LTR, DVAL, LVAL):
         PVAL = (SVAL > 0) * 1
         err = (PVAL != LVAL_reduced).sum() / float(LVAL_reduced.size)
         print('Error rate: %.1f' % (err*100))
-        minDCFs.append(compute_normalized_minDCF(SVAL, LVAL_reduced, 0.1, 1.0, 1.0))
-        actDCFs.append(compute_normalized_DCF(0.1, 1.0, 1.0, compute_confusion_matrix(PVAL, LVAL_reduced)))
+        minDCFs.append(compute_minimum_DCF(SVAL, LVAL_reduced, 0.1, 1.0, 1.0))
+        actDCFs.append(compute_actual_DCF(0.1, 1.0, 1.0, compute_confusion_matrix(PVAL, LVAL_reduced)))
     plt.figure()
     plt.plot(Cs, minDCFs, label="minDCF", color='r')
     plt.plot(Cs, actDCFs, label="actDCF", color='b')
@@ -385,8 +414,8 @@ def analyze_SVM_with_different_kernels(DTR, LTR, DVAL, LVAL):
             PVAL = (SVAL > 0) * 1
             err = (PVAL != LVAL_reduced).sum() / float(LVAL_reduced.size)
             print('Error rate: %.1f' % (err*100))
-            minDCFs.append(compute_normalized_minDCF(SVAL, LVAL_reduced, 0.1, 1.0, 1.0))
-            actDCFs.append(compute_normalized_DCF(0.1, 1.0, 1.0, compute_confusion_matrix(PVAL, LVAL_reduced)))
+            minDCFs.append(compute_minimum_DCF(SVAL, LVAL_reduced, 0.1, 1.0, 1.0))
+            actDCFs.append(compute_actual_DCF(0.1, 1.0, 1.0, compute_confusion_matrix(PVAL, LVAL_reduced)))
         plt.plot(Cs, minDCFs, label=f"minDCF - gamma: e^{i-4}", color='r', linestyle=hLinestyles[i])
         plt.plot(Cs, actDCFs, label=f"actDCF - gamma: e^{i-4}", color='b', linestyle=hLinestyles[i])
         i = i + 1
@@ -419,7 +448,7 @@ def analyze_GMM_with_different_components(DTR, LTR, DVAL, LVAL):
 
         PVAL_binary = np.argmax(logSPost_binary, axis=0)
 
-        print(f"Components: {n_components}: actual DCF: {compute_normalized_DCF(0.1, 1.0, 1.0, compute_confusion_matrix(PVAL_binary, LVAL)):.4f}")
+        print(f"Components: {n_components}: actual DCF: {compute_actual_DCF(0.1, 1.0, 1.0, compute_confusion_matrix(PVAL_binary, LVAL)):.4f}")
 
 # TODO: Move these functions to a separate files
 def plot_min_act_actcal_DCF_for_n_systems(raw_scores_list, calibrated_scores_list, LVAL, pi, system_names):
@@ -444,12 +473,12 @@ def plot_min_act_actcal_DCF_for_n_systems(raw_scores_list, calibrated_scores_lis
             # Compute optimal decisions for raw scores
             PVAL_raw = compute_optimal_bayes_decisions(effPrior, raw_scores, LVAL)
             conf_matr_raw = compute_confusion_matrix(PVAL_raw, LVAL)
-            rawActDCFs.append(compute_normalized_DCF(effPrior, 1.0, 1.0, conf_matr_raw))
-            minDCFs.append(compute_normalized_minDCF(raw_scores, LVAL, effPrior, 1.0, 1.0))
+            rawActDCFs.append(compute_actual_DCF(effPrior, 1.0, 1.0, conf_matr_raw))
+            minDCFs.append(compute_minimum_DCF(raw_scores, LVAL, effPrior, 1.0, 1.0))
             # Compute optimal decisions for calibrated scores
             PVAL_calibrated = compute_optimal_bayes_decisions(effPrior, calibrated_scores, LVAL)
             conf_matr_calibrated = compute_confusion_matrix(PVAL_calibrated, LVAL)
-            calActDCFs.append(compute_normalized_DCF(effPrior, 1.0, 1.0, conf_matr_calibrated))
+            calActDCFs.append(compute_actual_DCF(effPrior, 1.0, 1.0, conf_matr_calibrated))
         rawActDCFs_list.append(rawActDCFs)
         calActDCFs_list.append(calActDCFs)
         minDCFs_list.append(minDCFs)
@@ -490,8 +519,8 @@ def plot_min_act_DCF_for_n_systems(scores_list, LVAL, pi, system_names):
             # Compute optimal decisions for raw scores
             PVAL_raw = compute_optimal_bayes_decisions(effPrior, scores, LVAL)
             conf_matr_raw = compute_confusion_matrix(PVAL_raw, LVAL)
-            actDCFs.append(compute_normalized_DCF(effPrior, 1.0, 1.0, conf_matr_raw))
-            minDCFs.append(compute_normalized_minDCF(scores, LVAL, effPrior, 1.0, 1.0))
+            actDCFs.append(compute_actual_DCF(effPrior, 1.0, 1.0, conf_matr_raw))
+            minDCFs.append(compute_minimum_DCF(scores, LVAL, effPrior, 1.0, 1.0))
         actDCFs_list.append(actDCFs)
         minDCFs_list.append(minDCFs)
     print("Progress: 100.0%")
@@ -761,6 +790,7 @@ if __name__ == "__main__":
         menu_option = int(input("\nMenu\n\
                                     1. Dimensionality Reduction\n\
                                     2. Generative Gaussian Models\n\
+                                    3. Evaluate Gaussian Models with DCFs\n\
                                     0. Exit\n"))
 
         match menu_option:
@@ -768,5 +798,7 @@ if __name__ == "__main__":
                 PCA_LDA_effects_and_classification_analysis(D, L)
             case 2:
                 compare_gaussian_models(D, L)
+            case 3:
+                compare_effPriors_and_DCFs_for_different_applications(D, L)
             case 0:
                 break
