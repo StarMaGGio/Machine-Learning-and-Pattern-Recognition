@@ -5,6 +5,7 @@ import numpy as np
 from src.utils import vcol, vrow
 from src.multivariate_gaussian_log_pdf import logpdf_GAU_ND
 from src.utils import computeCovariance, computeMean
+from Project.src.bayes_decisions_model import compute_predictions_with_llr
 
 def loglikelihoods(X, mu_MLs, C_MLs):
     """
@@ -272,26 +273,3 @@ def compute_llr_for_classification(X, mu0, mu1, C0, C1):
     """
     return logpdf_GAU_ND(X, mu1, C1) - logpdf_GAU_ND(X, mu0, C0)
 
-def compute_predictions_with_llr(llr, t):
-    """
-    Function to compute predictions from log-likelihood ratios.
-    Compare LLRs with a threshold t and return predictions.
-
-    Parameters
-    ----------
-    llr : (numpy.ndarray)
-        Log-likelihood ratios of shape (n_samples,).
-    t : (float)
-        Decision threshold.
-
-    Returns
-    -------
-    PVAL : (numpy.ndarray)
-        Predictions of shape (n_samples,).
-
-    """
-    PVAL = np.zeros(llr.shape[1], dtype=np.int32)
-    PVAL[llr >= t] = 1
-    PVAL[llr < t] = 0
-    
-    return PVAL

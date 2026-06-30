@@ -70,3 +70,27 @@ def compute_minimum_DCF(LLRs, LVAL, pi, Cfn=1.0, Cfp=1.0):
     
     # Return the minimum DCF possible on the evaluation set
     return minDCF
+
+def compute_predictions_with_llr(llr, t):
+    """
+    Function to compute predictions from log-likelihood ratios.
+    Compare LLRs with a threshold t and return predictions.
+
+    Parameters
+    ----------
+    llr : (numpy.ndarray)
+        Log-likelihood ratios of shape (n_samples,).
+    t : (float)
+        Decision threshold.
+
+    Returns
+    -------
+    PVAL : (numpy.ndarray)
+        Predictions of shape (n_samples,).
+
+    """
+    PVAL = np.zeros(llr.shape[1], dtype=np.int32)
+    PVAL[llr >= t] = 1
+    PVAL[llr < t] = 0
+    
+    return PVAL

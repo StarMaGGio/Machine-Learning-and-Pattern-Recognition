@@ -1,5 +1,4 @@
 # pyrefly: ignore [missing-import]
-from Project.src import bayes_decisions_model
 import numpy as np
 import math
 # pyrefly: ignore [missing-import]
@@ -10,9 +9,9 @@ from src.evaluation import compute_acc_err
 from src.visualization import histsPlot, plot_Bayes_error
 from src.dimensionality_reduction import PrincipalComponentAnalysis, LinearDiscriminantAnalysis
 from src.gaussian_models import MultivariateGaussianClassifier, NaiveBayesGaussianClassifier, TiedGaussianClassifier
+from src.logistic_regression import LogisticRegression, WeightedLogisticRegression
 
 from src.bayes_decisions_model import compute_optimal_bayes_decisions, compute_actual_DCF, compute_minimum_DCF
-from src.logistic_regression import trainLogReg, trainLogRegWeighted
 from src.support_vector_machines import train_dual_SVM_linear, train_dual_SVM_kernel
 from src.gaussian_mixture_models import logpdf_GMM, train_GMM_LBG_EM
 
@@ -64,7 +63,7 @@ def PCA_LDA_effects_and_classification_analysis(D, L):
             print(f"Threshold: {threshold:.5f}")
             
             # Classify projected DVAL with the threshold computed from projected DTR
-            PVAL = np.zeros(shape=LVAL.shape, dtype=np.int32)
+            PVAL = np.zeros(shape=LVAL.shape, dtype=np.int32)  
             PVAL[DVALW[0] >= threshold] = 1 # Predict class 1 for elements greater than the threshold
             PVAL[DVALW[0] < threshold] = 0 # Predict class 0 for elements lower than the threshold
             
@@ -159,13 +158,16 @@ def compare_gaussian_models(D, L):
 # -----------------------
 #  Evaluation/Bayes Risk
 # -----------------------
-def compare_effPriors_and_DCFs_for_different_applications(DTR, LTR, DVAL, LVAL):
+def compare_effPriors_and_DCFs_for_different_applications(D, L):
+
+    # Divide the dataset in training and validation sets
+    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
 
     inner_menu_option = int(input('\n Choose a model to evaluate:\n\
                                     1. MVG\n\
                                     2. Tied Gaussian\n\
                                     3. Naive Bayes Gaussian\n\
-                                    4. Bayes Error Plot\n\
+                                    4. Bayes Error Plot (Different Applications/Effective Priors)\n\
                                     0. Back\n'))
     model = ""
 
@@ -227,90 +229,101 @@ def compare_effPriors_and_DCFs_for_different_applications(DTR, LTR, DVAL, LVAL):
     print(f"effPrior={eff_prior}: act_DCF={act_DCF:.3f}, min_DCF={min_DCF:.3f}, percent_loss={percent_loss:.3f}")
     
 # ---------------------
-#  TODO: Logistic Regression
+#  Logistic Regression
 # ---------------------
-def analyze_logistic_regression_with_different_lambdas(DTR, LTR, DVAL, LVAL, title):
-    actDCFs = []
-    minDCFs = []
-    lambs = np.logspace(-4, 2, 13)
-    pi = 0.1
-    for lamb in lambs:
-        w, b = trainLogReg(DTR, LTR, lamb) # Train model -> obtain model parameters w and b
-        sVal = np.dot(w.T, DVAL) + b # Compute validation scores
-        PVAL = np.zeros(LVAL.shape[0], dtype=np.int32) # Predict validation labels
-        PVAL[sVal > 0] = 1
-        PVAL[sVal < 0] = 0
-        err = (PVAL != LVAL).sum() / float(LVAL.size)
-        print('Error rate: %.2f' % (err*100))
-        
-        # Compute empirical prior
-        pEmp = (LTR == 1).sum() / LTR.size # Fraction of class 1 samples
-        # Compute LLR-like scores
-        sValLLr = sVal - np.log(pEmp / (1 - pEmp))
-        # Compute optimal decisions
-        PVALllr = np.zeros(LVAL.shape[0], dtype=np.int32) # Predict validation labels
-        PVALllr[sValLLr > 0] = 1
-        PVALllr[sValLLr < 0] = 0
-        conf_matr = compute_confusion_matrix(PVALllr, LVAL)
-        minDCF = compute_minimum_DCF(sValLLr, LVAL, pi, 1.0, 1.0)
-        minDCFs.append(minDCF)
-        print('minDCF: %.4f' % minDCF)
-        actDCF = compute_actual_DCF(pi, 1.0, 1.0, conf_matr)
-        actDCFs.append(actDCF)
-        print('actDCF: %.4f' % actDCF)
-    
-        print()
-        
-    plt.figure()
-    plt.plot(lambs, minDCFs, label="minDCF", color='r')
-    plt.plot(lambs, actDCFs, label="actDCF", color='b')
-    plt.xscale('log', base=10)
-    plt.ylabel('DCF value')
-    plt.xlabel('lambda value')
-    plt.title(title)
-    plt.show()
+def analyze_logistic_regression_with_different_lambdas(D, L):
 
-def analyze_weighted_logistic_regression_with_different_lambdas(DTR, LTR, DVAL, LVAL, title):
-    actDCFs = []
-    minDCFs = []
-    lambs = np.logspace(-4, 2, 13)
-    # Compute empirical prior
-    pEmp = (LTR == 1).sum() / LTR.size # Fraction of class 1 samples
-    
-    for lamb in lambs:
-        w, b = trainLogRegWeighted(DTR, LTR, lamb, pEmp) # Train model -> obtain model parameters w and b
-        sVal = np.dot(w.T, DVAL) + b # Compute validation scores
-        PVAL = np.zeros(LVAL.shape[0], dtype=np.int32) # Predict validation labels
-        PVAL[sVal > 0] = 1
-        PVAL[sVal < 0] = 0
-        err = (PVAL != LVAL).sum() / float(LVAL.size)
-        print('Error rate: %.2f' % (err*100))
-    
-        # Compute LLR-like scores
-        sValLLr = sVal - np.log(pEmp / (1 - pEmp))
-        # Compute optimal decisions
-        PVALllr = np.zeros(LVAL.shape[0], dtype=np.int32) # Predict validation labels
-        PVALllr[sValLLr > 0] = 1
-        PVALllr[sValLLr < 0] = 0
-        conf_matr = compute_confusion_matrix(PVALllr, LVAL)
-        pi = 0.1
-        minDCF = compute_minimum_DCF(sValLLr, LVAL, pi, 1.0, 1.0)
-        minDCFs.append(minDCF)
-        print('minDCF: %.4f' % minDCF)
-        actDCF = compute_actual_DCF(pi, 1.0, 1.0, conf_matr)
-        actDCFs.append(actDCF)
-        print('actDCF: %.4f' % actDCF)
-    
-        print()
-        
-    plt.figure()
-    plt.plot(lambs, minDCFs, label="minDCF", color='r')
-    plt.plot(lambs, actDCFs, label="actDCF", color='b')
-    plt.xscale('log', base=10)
-    plt.ylabel('DCF value')
-    plt.xlabel('lambda value')
-    plt.title(title)
-    plt.show()
+    # Divide the dataset in training and validation sets
+    (DTR, LTR), (DVAL, LVAL) = split_db_2to1(D, L)
+
+    inner_menu_option = int(input('\n Choose a model to evaluate:\n\
+                                    1. Logistic Regression\n\
+                                    2. Weighted Logistic Regression\n\
+                                    3. Bayes Error Plot (Different Lambdas/Regularization Parameters)\n\
+                                    0. Back\n'))
+    model = ""
+
+    if inner_menu_option == 0: return
+
+    if inner_menu_option != 3:
+        lamb = float(input("Regularization parameter (from 0.0001 to 100.0): "))
+
+    match inner_menu_option:
+        case 1:
+            # Train model
+            LR = LogisticRegression()
+            LR.train(DTR, LTR, lamb)
+            # Predict validation labels
+            PVAL = LR.predict_binary(DVAL)
+        case 2:
+            # Train weighted model
+            WLR = WeightedLogisticRegression()
+            WLR.train(DTR, LTR, lamb)
+            # Predict validation labels
+            PVAL = WLR.predict_binary(DVAL)
+        case 3:
+            # Plot DCFs for different values of lambda for the selected model
+            LLRs = np.zeros(shape=LVAL.shape)
+            select_model = int(input("Select model: 1. Logistic Regression, 2. Weighted Logistic Regression"))
+            match select_model:
+                case 1:
+                    model = "Logistic Regression"
+                    
+                    actDCFs = []
+                    minDCFs = []
+                    lambs = np.logspace(-4, 2, 13)
+                    effPrior = 0.1
+                    for lamb in lambs:
+                        LR = LogisticRegression()
+                        LR.train(DTR, LTR, lamb)
+                        LLRs = LR.get_log_likelihood_ratios(DVAL)
+
+                        minDCF = compute_minimum_DCF(LLRs, LVAL, effPrior, 1.0, 1.0)
+                        minDCFs.append(minDCF)
+                        print('minDCF: %.4f' % minDCF)
+
+                        conf_matr = compute_confusion_matrix(PVAL, LVAL)
+                        actDCF = compute_actual_DCF(effPrior, 1.0, 1.0, conf_matr)
+                        actDCFs.append(actDCF)
+                        print('actDCF: %.4f' % actDCF)
+                    
+                        print()
+                case 2:
+                    model = "Weighted Logistic Regression"
+
+                    actDCFs = []
+                    minDCFs = []
+                    lambs = np.logspace(-4, 2, 13)
+                    effPrior = 0.1
+                    for lamb in lambs:
+                        WLR = WeightedLogisticRegression()
+                        WLR.train(DTR, LTR, lamb)
+                        LLRs = WLR.get_log_likelihood_ratios(DVAL)
+
+                        minDCF = compute_minimum_DCF(LLRs, LVAL, effPrior, 1.0, 1.0)
+                        minDCFs.append(minDCF)
+                        print('minDCF: %.4f' % minDCF)
+
+                        conf_matr = compute_confusion_matrix(PVAL, LVAL)
+                        actDCF = compute_actual_DCF(effPrior, 1.0, 1.0, conf_matr)
+                        actDCFs.append(actDCF)
+                        print('actDCF: %.4f' % actDCF)
+                    
+                        print()
+                
+            plt.figure()
+            plt.plot(lambs, minDCFs, label="minDCF", color='r')
+            plt.plot(lambs, actDCFs, label="actDCF", color='b')
+            plt.xscale('log', base=10)
+            plt.ylabel('DCF value')
+            plt.xlabel('Lambda / Regularization')
+            plt.title(f"{model} - Different Lambdas/Regularization Parameters")
+            plt.show()
+            return
+
+    # Compute error rate
+    err = (PVAL != LVAL).sum() / float(LVAL.size)
+    print('Error rate: %.2f' % (err*100))
 
 # ------------------------
 # TODO: Support Vector Machines
@@ -791,6 +804,11 @@ if __name__ == "__main__":
                                     1. Dimensionality Reduction\n\
                                     2. Generative Gaussian Models\n\
                                     3. Evaluate Gaussian Models with DCFs\n\
+                                    4. Logistic Regression\n\
+                                    5. Support Vector Machines\n\
+                                    6. Gaussian Mixture Models\n\
+                                    7. Scores Calibration\n\
+                                    8. Score Level Fusion\n\
                                     0. Exit\n"))
 
         match menu_option:
@@ -800,5 +818,7 @@ if __name__ == "__main__":
                 compare_gaussian_models(D, L)
             case 3:
                 compare_effPriors_and_DCFs_for_different_applications(D, L)
+            case 4:
+                analyze_logistic_regression_with_different_lambdas(D, L)
             case 0:
                 break
